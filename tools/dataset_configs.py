@@ -654,7 +654,103 @@ def frame_metrics(logits, y):
             "roc_auc": fp_replica.roc_auc(torch.softmax(logits, 1)[:, 1], y)}
 
 
-def cmd_embed(a, pools, w):
+class Clock:
+    """Time estimates that learn from what has actually happened so far.
+
+    Starts from timings of the 2026-10-09 run on the lab PC (RTX 4060: ~31 s to embed
+    a 24 h day), then replaces each guess with the measured rate as soon as there is
+    one. Rates are kept in <out>\\_timing.json so a resumed run remembers them.
+    Writes <out>\\progress.txt after every step: open it any time to see where it is."""
+
+    GUESS = {"embed_s_per_audio_hour": 31 / 24,  # AVES on the GPU, audio read from disk
+             "load_s_per_day": 0.5,               # reading one training day from the cache
+             "score_s_per_day": 3.0,              # reading a whole day + model + scoring
+             "train_overhead_s": 30.0}
+
+    def __init__(self, a, pools, w):
+        self.a, self.pools, self.w = a, pools, w
+        self.path = os.path.join(a.out, "_timing.json")
+        self.measured = json.load(open(self.path)) if os.path.exists(self.path) else {}
+        self.t0 = time.time()
+        self.done = []  # (name, expected s, actual s)
+        self.stage = "starting"
+        self.audio_hours = {}
+
+    def rate(self, name):
+        m = self.measured.get(name)
+        return m["seconds"] / m["units"] if m and m["units"] else self.GUESS[name]
+
+    def learn(self, name, seconds, units):
+        m = self.measured.setdefault(name, {"seconds": 0.0, "units": 0.0})
+        m["seconds"] += seconds
+        m["units"] += units
+        self.w.json(self.path, self.measured)
+
+    def hours_of(self, pool, key):
+        if (pool, key) not in self.audio_hours:
+            try:
+                import soundfile
+                h = soundfile.info(self.pools[pool].sounds[key]).duration / 3600
+            except Exception:
+                h = 24.0
+            self.audio_hours[(pool, key)] = h
+        return self.audio_hours[(pool, key)]
+
+    def embed_estimate(self, jobs):
+        return sum(self.hours_of(p, k) for p, k, *_ in jobs) * self.rate("embed_s_per_audio_hour")
+
+    def config_estimate(self, cfg):
+        n_train = sum(len(f) for f in cfg["train"].values())
+        n_eval = sum(len(f) for s in [cfg["validation"]] + cfg["tests"] for f in s["files"].values())
+        return (n_train * self.rate("load_s_per_day") + self.a.minutes * 60 + self.rate("train_overhead_s")
+                + n_eval * self.rate("score_s_per_day"))
+
+    def remaining_configs(self, letters, best_guess):
+        """(letter, estimate) for configurations without results yet."""
+        out = []
+        for letter in letters:
+            d = find_config_dir(self.a.out, letter)
+            if d and os.path.exists(os.path.join(d, "results", "metrics.json")) and not self.a.rerun:
+                continue
+            if d:
+                cfg = json.load(open(os.path.join(d, "config.json")))
+            else:
+                best = self.a.best or best_guess
+                comps = resolve_components(letter, best if best in BASE_CONFIGS else "A", self.a.out)
+                cfg = design(letter, comps, self.pools, self.a.seed)
+            out.append((letter, self.config_estimate(cfg)))
+        return out
+
+    def report(self, stage, embed_left_s=0.0, letters=(), best_guess="A"):
+        self.stage = stage
+        rest = self.remaining_configs(letters, best_guess)
+        total = embed_left_s + sum(e for _, e in rest)
+        now = time.time()
+        t = [f"Progress, updated {time.strftime('%Y-%m-%d %H:%M')}",
+             f"Now: {stage}",
+             f"Running for {fmt_dur(now - self.t0)}. About {fmt_dur(total)} left; "
+             f"expected to finish around {time.strftime('%a %H:%M', time.localtime(now + total))}.", ""]
+        if embed_left_s:
+            t.append(f"Embedding still to do: about {fmt_dur(embed_left_s)}")
+        for letter, e in rest:
+            t.append(f"Setup {letter}: about {fmt_dur(e)}")
+        if self.done:
+            t += ["", "Finished (expected -> actual):"]
+            t += [f"  {n}: {fmt_dur(e)} -> {fmt_dur(x)}" for n, e, x in self.done]
+        t += ["", "Estimates use the speed measured so far in this run (or past runs), so they get "
+                  "better as it goes. Setups E-H are rough until the best of A-D is known."]
+        with self.w.open(os.path.join(self.a.out, "progress.txt")) as f:
+            f.write("\n".join(t) + "\n")
+        log(f"PROGRESS: {stage}; about {fmt_dur(total)} left in total "
+            f"(finish ~{time.strftime('%a %H:%M', time.localtime(now + total))})")
+
+
+def fmt_dur(seconds):
+    m = int(seconds // 60)
+    return f"{m // 60}h{m % 60:02d}m" if m >= 60 else f"{m}m{int(seconds) % 60:02d}s"
+
+
+def cmd_embed(a, pools, w, clock=None):
     import torch
     jobs = []
     for pool, key, whole in needed_files(pools, a.seed):
@@ -665,8 +761,11 @@ def cmd_embed(a, pools, w):
     log(f"{len(jobs)} files to embed (files already in {a.cache} are skipped)")
     if not jobs:
         return
-    embed = get_embedder(a.fake_embedder)
+    clock = clock or Clock(a, pools, w)
+    expected = clock.embed_estimate(jobs)
     t_start = time.time()
+    clock.report(f"embedding {len(jobs)} files", expected, getattr(a, "all_letters", a.configs))
+    embed = get_embedder(a.fake_embedder)
     for n, (pool, key, whole, dst) in enumerate(jobs, 1):
         t0 = time.time()
         y = load_audio(pools[pool].sounds[key])
@@ -683,9 +782,13 @@ def cmd_embed(a, pools, w):
         w.makedirs(os.path.dirname(dst))
         torch.save(item, w.check(dst + ".tmp"))
         os.replace(dst + ".tmp", dst)
-        el = time.time() - t_start
+        clock.learn("embed_s_per_audio_hour", time.time() - t0, day.shape[0] * FRAME_SECONDS / 3600)
+        left = clock.embed_estimate(jobs[n:])
         log(f"{n}/{len(jobs)} {pool} {key}: {day.shape[0]} frames ({time.time() - t0:.0f} s), "
-            f"about {el / n * (len(jobs) - n) / 60:.0f} min left")
+            f"embedding about {fmt_dur(left)} left")
+        if n % 10 == 0 or n == len(jobs):
+            clock.report(f"embedding, {n}/{len(jobs)} files done", left, getattr(a, "all_letters", a.configs))
+    clock.done.append(("embedding", expected, time.time() - t_start))
 
 
 class Day:
@@ -914,16 +1017,17 @@ def write_csv(w, path, rows):
         wr.writerows(rows)
 
 
-def cmd_run(a, pools, w):
+def cmd_run(a, pools, w, clock=None):
+    clock = clock or Clock(a, pools, w)
     for letter in a.configs:
         try:
-            run_one(a, pools, w, letter)
+            run_one(a, pools, w, letter, clock)
         except Exception:
             import traceback
             log(f"{letter}: FAILED, carrying on with the others:\n{traceback.format_exc()}")
 
 
-def run_one(a, pools, w, letter):
+def run_one(a, pools, w, letter, clock):
     import torch
     cfg_dir = find_config_dir(a.out, letter)
     if not cfg_dir:
@@ -935,16 +1039,25 @@ def run_one(a, pools, w, letter):
         log(f"{letter}: results already there (use --rerun to redo)")
         return
     log(f"=== {cfg['name']}")
+    expected, t_cfg = clock.config_estimate(cfg), time.time()
+    clock.report(f"setup {cfg['name']} (expected {fmt_dur(expected)})", 0,
+                 getattr(a, "all_letters", a.configs), a.best or "A")
+    n_train = sum(len(f) for f in cfg["train"].values())
+    t0 = time.time()
     ds, tinfo = training_data(cfg, pools, a.cache, a.seed)
+    clock.learn("load_s_per_day", time.time() - t0, n_train)
     log(f"training frames: {tinfo}")
     with w.open(os.path.join(res, "training_log.txt")) as logf:
         logf.write(json.dumps(tinfo, indent=1) + "\n")
+        t0 = time.time()
         model = train(ds, a.minutes, a.seed, logf)
+        clock.learn("train_overhead_s", max(0.0, time.time() - t0 - a.minutes * 60), 1)
     torch.save(model.state_dict(), w.check(os.path.join(res, "model.pth")))
 
     sets = [dict(cfg["validation"], key="validation")] + cfg["tests"]
     metrics = {"name": cfg["name"], "components": cfg["components"], "training": tinfo, "sets": {}}
     sweeps = {}
+    t_score, n_eval = time.time(), 0
     for s in sets:
         log(f"scoring {s['name']}")
         dets, files, fpm = detect(model, s, pools, a.cache, w,
@@ -954,9 +1067,11 @@ def run_one(a, pools, w, letter):
         sweeps[s["key"]] = (rows, truth, dets, files)
         if rows:
             write_csv(w, os.path.join(res, f"elp_method_{s['key']}_all_thresholds.csv"), rows)
+        n_eval += len(files)
         metrics["sets"][s["key"]] = {"name": s["name"], "fruitpunch_method": fpm,
                                      "days": len(files), "hours": sum(h for *_, h in files)}
 
+    clock.learn("score_s_per_day", time.time() - t_score, max(1, n_eval))
     val_rows = sweeps["validation"][0]
     # detections only exist where the mean rumble probability is over 0.5, so lower
     # thresholds change nothing; among equal F1s keep the lowest threshold
@@ -976,9 +1091,27 @@ def run_one(a, pools, w, letter):
         if key in ("sampleA", "sampleB"):
             m["elp_by_habitat"] = {h: at(elp_sweep(truth, dets, files, lambda k, h=h: HABITAT.get(k[:5]) == h), thr)
                                    for h in sorted(set(HABITAT.values()))}
+    # one row per day at the chosen threshold, so any day can be looked up later
+    for key, (rows, truth, dets, files) in sweeps.items():
+        per_day = []
+        for p_, k, h in files:
+            r = at(elp_sweep(truth, dets, [(p_, k, h)]), thr)
+            per_day.append({"dataset": p_, "sound_file": os.path.basename(pools[p_].sounds[k]),
+                            "site": k[:5], "habitat": HABITAT.get(k[:5], ""), "hours": round(h, 3),
+                            "rumbles": r["rumbles"], "rumbles_found": r["rumbles_found"],
+                            "detections": r["detections"], "true_detections": r["tp_detections"],
+                            "false_detections": r["fp"], "recall": r["recall"], "precision": r["precision"],
+                            "fp_per_hour": r["fp_per_hour"]})
+        if per_day:
+            write_csv(w, os.path.join(res, f"elp_method_{key}_per_day.csv"), per_day)
+    metrics["settings"] = {"minutes": a.minutes, "seed": a.seed, "best": a.best,
+                           "fake_embedder": a.fake_embedder, "source": a.source, "cache": a.cache}
+    metrics["run_time_minutes"] = round((time.time() - t_cfg) / 60, 1)
     w.json(os.path.join(res, "metrics.json"), metrics)
     write_summary(w, os.path.join(res, "summary.md"), cfg, metrics)
+    clock.done.append((f"setup {cfg['name']}", expected, time.time() - t_cfg))
     log(f"{letter}: results in {res}")
+    clock.report(f"finished setup {cfg['name']}", 0, getattr(a, "all_letters", a.configs), a.best or "A")
 
 
 def _p(v, digits=3):
@@ -1048,7 +1181,9 @@ def write_summary(w, path, cfg, m):
           f"- Negatives: {tr['negatives_used_from_gaps']} from gaps between rumbles, "
           f"{tr['negatives_used_from_noise_and_random']} from noise clips and random forest frames",
           "", "Files here: `model.pth`, `training_log.txt`, `detections\\*.txt` (Raven tables with a Score "
-          "column), `elp_method_*_all_thresholds.csv` (every threshold), `metrics.json`."]
+          "column), `elp_method_*_all_thresholds.csv` (every threshold), `elp_method_*_per_day.csv` "
+          "(every day at the chosen threshold), `metrics.json` (all numbers above).",
+          f"- Time for this setup: {m.get('run_time_minutes', '?')} minutes"]
     with w.open(path) as f:
         f.write("\n".join(t) + "\n")
 
@@ -1173,29 +1308,31 @@ def main(argv=None):
         log(f"reading datasets from {root}; writing to {a.out}")
         pools = load_pools(root) if a.step != "compare" else None
         configs = a.configs
+        a.all_letters = list(configs)
+        clock = Clock(a, pools, w) if pools else None
         if a.step == "all" and not a.best and any(c not in BASE_CONFIGS for c in configs):
             # one go: A-D, pick the best on validation, E on top of it, pick again, then F-H
             a.configs = [c for c in configs if c in BASE_CONFIGS]
             cmd_plan(a, pools, w)
-            cmd_embed(a, pools, w)
-            cmd_run(a, pools, w)
+            cmd_embed(a, pools, w, clock)
+            cmd_run(a, pools, w, clock)
             best = pick_best(a, w, list("ABCD"), "best of A-D")
             if "E" in configs:
                 a.best, a.configs = best, ["E"]
                 cmd_plan(a, pools, w)
-                cmd_run(a, pools, w)
+                cmd_run(a, pools, w, clock)
                 best = pick_best(a, w, [best, "E"], f"best of {best} and E")
             a.best, a.configs = best, [c for c in configs if c in "FGH"]
             cmd_plan(a, pools, w)
-            cmd_run(a, pools, w)
+            cmd_run(a, pools, w, clock)
             cmd_compare(a, w)
             return
         if a.step in ("plan", "all"):
             cmd_plan(a, pools, w)
         if a.step in ("embed", "all"):
-            cmd_embed(a, pools, w)
+            cmd_embed(a, pools, w, clock)
         if a.step in ("run", "all"):
-            cmd_run(a, pools, w)
+            cmd_run(a, pools, w, clock)
         if a.step in ("compare", "all"):
             cmd_compare(a, w)
     finally:

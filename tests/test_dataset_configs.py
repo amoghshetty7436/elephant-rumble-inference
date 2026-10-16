@@ -207,6 +207,11 @@ def test_all_steps(source, monkeypatch):
     assert a_["rumble_frames_by_habitat"]["clearing"] != a_["rumble_frames_by_habitat"]["forest"]
     e = json.load(open(out / names[4] / "results" / "metrics.json"))
     assert e["training"]["negatives_used_from_noise_and_random"] > 0
+    days = (out / names[0] / "results" / "elp_method_sampleB_per_day.csv").read_text().splitlines()
+    assert len(days) == 4 and "habitat" in days[0]
+    prog = (out / "progress.txt").read_text()
+    assert "Finished (expected -> actual)" in prog and "setup H_" in prog
+    assert set(json.load(open(out / "_timing.json"))) >= {"embed_s_per_audio_hour", "score_s_per_day"}
     assert (out / "comparison.md").read_text().count("\n|") >= 9
 
     # the dataset folders themselves are untouched
