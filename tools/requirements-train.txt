@@ -1,0 +1,6 @@
+# For tools/fp_replica.py. Install PyTorch first with the command for your GPU
+# from https://pytorch.org/get-started/locally/ (it includes torchaudio), then:
+#   pip install -r tools/requirements-train.txt
+numpy
+scipy
+soundfile
