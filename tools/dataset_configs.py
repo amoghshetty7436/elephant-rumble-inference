@@ -548,6 +548,9 @@ def write_readme(w, cfg_dir, cfg):
         t.append(f"| {r['role']} | {r['set']} | {r['dataset']} | `{r['folders']}` | {r['files']} | "
                  f"{r['rumbles']} | {r['no_rumble_days']} | {r['fruitpunch_usable']} |")
     t += ["", "Notes:",
+          *(["- Clearing and forest are exactly 50/50: clearing days are added until they hold at least "
+              "as many rumbles as the forest days, then both habitats are cut to the same number of rumble "
+              "frames and the same number of negative frames."] if "clearing-matched" in cfg["components"] else []),
           "- Training follows FruitPunch: a day is used only if it has at least 2 rumbles and 2 gaps "
           "between rumbles; negatives come from the gaps; negatives are cut to as many as positives.",
           "- DUMMY_NoEles rows are not rumbles: those days count as reviewed days with no elephants.",
@@ -723,10 +726,15 @@ class Day:
 ################################################################################
 
 def training_data(cfg, pools, cache, seed):
+    """Rumble frames + as many negative frames, FruitPunch-style.
+
+    With 'clearing-matched' (setup D) clearing and forest are made exactly 50/50:
+    the same number of rumble frames from each, and the same number of negative frames."""
     import torch
-    pos, neg, extra = [], [], []
+    pos, neg, extra = defaultdict(list), defaultdict(list), []
     used, skipped = defaultdict(int), defaultdict(int)
     for p, files in cfg["train"].items():
+        habitat = "clearing" if p == "clearing" else "forest"
         for k in files:
             day = Day(cache, p, k)
             if p == "noise":
@@ -736,25 +744,43 @@ def training_data(cfg, pools, cache, seed):
             labels = pools[p].labels.get(k, [])
             if is_usable(labels):
                 pi, ni = label_frames(labels)
-                pos.append(day.frames(pi))
-                neg.append(day.frames(ni))
+                pos[habitat].append(day.frames(pi))
+                neg[habitat].append(day.frames(ni))
                 used[p] += 1
             else:
                 skipped[p] += 1
             if cfg["random_negatives"] and POOLS[p]["forest"]:
                 extra.append(day.frames(random_negative_frames(labels, day.n, k)))
-    pos, neg = torch.cat(pos), torch.cat(neg)
-    extra = torch.cat(extra) if extra else neg[:0]
     g = torch.Generator().manual_seed(seed)
-    n_extra = min(extra.shape[0], int(pos.shape[0] * EXTRA_NEG_SHARE)) if cfg["random_negatives"] else 0
-    n_gap = min(neg.shape[0], pos.shape[0] - n_extra)
-    negs = torch.cat([neg[torch.randperm(neg.shape[0], generator=g)[:n_gap]],
-                      extra[torch.randperm(extra.shape[0], generator=g)[:n_extra]]])
-    x = torch.cat([pos, negs]).float()
-    y = torch.cat([torch.ones(pos.shape[0], dtype=torch.long), torch.zeros(negs.shape[0], dtype=torch.long)])
+
+    def pick(x, n):
+        return x[torch.randperm(x.shape[0], generator=g)[:n]]
+    pos = {h: torch.cat(v) for h, v in pos.items()}
+    neg = {h: torch.cat(v) for h, v in neg.items()}
+    available = {h: (pos[h].shape[0], neg[h].shape[0]) for h in pos}
+    if "clearing-matched" in cfg["components"]:
+        n = min(pos["clearing"].shape[0], pos["forest"].shape[0])
+        pos = {h: pick(v, n) for h, v in pos.items()}
+    n_pos = sum(v.shape[0] for v in pos.values())
+    extra = torch.cat(extra) if extra else None
+    n_extra = min(extra.shape[0], int(n_pos * EXTRA_NEG_SHARE)) if extra is not None else 0
+    if "clearing-matched" in cfg["components"]:  # half the gap negatives from each habitat
+        half = (n_pos - n_extra) // 2
+        negs = [pick(neg["clearing"], half), pick(neg["forest"], n_pos - n_extra - half)]
+    else:  # FruitPunch: a random draw from all gap negatives together
+        allneg = torch.cat(list(neg.values()))
+        negs = [pick(allneg, n_pos - n_extra)]
+    if n_extra:
+        negs.append(pick(extra, n_extra))
+    negs = torch.cat(negs)
+    x = torch.cat(list(pos.values()) + [negs]).float()
+    y = torch.cat([torch.ones(n_pos, dtype=torch.long), torch.zeros(negs.shape[0], dtype=torch.long)])
     info = {"days_used": dict(used), "days_skipped_fruitpunch_rule": dict(skipped),
-            "rumble_frames": pos.shape[0], "gap_negative_frames_available": neg.shape[0],
-            "negatives_used_from_gaps": n_gap, "negatives_used_from_noise_and_random": n_extra}
+            "rumble_frames": n_pos,
+            "rumble_frames_by_habitat": {h: v.shape[0] for h, v in pos.items()},
+            "frames_available_by_habitat": {h: {"rumble": r, "gap_negative": q} for h, (r, q) in available.items()},
+            "negatives_used_from_gaps": negs.shape[0] - n_extra,
+            "negatives_used_from_noise_and_random": n_extra}
     return torch.utils.data.TensorDataset(x, y), info
 
 
@@ -1018,6 +1044,7 @@ def write_summary(w, path, cfg, m):
     t += ["", "## Training", "",
           f"- Days used per dataset: {tr['days_used']}",
           f"- Days skipped (fewer than 2 rumbles or 2 gaps, FruitPunch's rule): {tr['days_skipped_fruitpunch_rule']}",
+          f"- Rumble frames used, by habitat: {tr['rumble_frames_by_habitat']}",
           f"- Negatives: {tr['negatives_used_from_gaps']} from gaps between rumbles, "
           f"{tr['negatives_used_from_noise_and_random']} from noise clips and random forest frames",
           "", "Files here: `model.pth`, `training_log.txt`, `detections\\*.txt` (Raven tables with a Score "

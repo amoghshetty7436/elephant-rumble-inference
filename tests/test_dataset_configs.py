@@ -200,6 +200,11 @@ def test_all_steps(source, monkeypatch):
         assert (out / n / "results" / "detections" / "sampleB_detections.txt").exists()
     g = json.load(open(out / names[6] / "config.json"))
     assert "Test 2: Sample A" not in [t["name"] for t in g["tests"]]
+    d = json.load(open(out / names[3] / "results" / "metrics.json"))["training"]
+    by = d["rumble_frames_by_habitat"]
+    assert by["clearing"] == by["forest"] and d["negatives_used_from_gaps"] == d["rumble_frames"]
+    a_ = json.load(open(out / names[0] / "results" / "metrics.json"))["training"]
+    assert a_["rumble_frames_by_habitat"]["clearing"] != a_["rumble_frames_by_habitat"]["forest"]
     e = json.load(open(out / names[4] / "results" / "metrics.json"))
     assert e["training"]["negatives_used_from_noise_and_random"] > 0
     assert (out / "comparison.md").read_text().count("\n|") >= 9
