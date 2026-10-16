@@ -159,15 +159,22 @@ def test_all_steps(source, monkeypatch):
     before = {k: v for k, v in snapshot(source).items()}
     out = source / "Configurations"
     common = ["--source", str(source), "--minutes", "0.02", "--fake-embedder"]
-    dc.main(["all", "--configs", "A", "B", "C", "D", *common])
-    dc.main(["all", "--configs", "E", "F", "G", "H", "--best", "B", *common])
+    dc.main(common)  # one command: A-D, pick the best on validation, E, pick again, F-H
 
     names = sorted(d for d in os.listdir(out) if not d.startswith("_") and os.path.isdir(out / d))
+    choice = (out / "best_choice.txt").read_text().splitlines()
+    best = choice[-1].split("picked ")[1][0]
+    base = {"A": "clearing+forest", "B": "forest", "C": "clearing", "D": "forest+clearing3days",
+            "E": choice[0].split("picked ")[1][0]}
+    base["E"] = base[base["E"]] + "+noise"
     n_val = len(dc.heldout_forest_days(dc.Pool("forest", str(source))))  # whole sites, so 2 or more
     assert names == ["A_train-clearing+forest", "B_train-forest", "C_train-clearing",
                      "D_train-forest+clearing3days",  # 35 forest rumbles need all 3 clearing days (7 each)
-                     "E_train-forest+noise", f"F_train-forest+complex+general_val-{n_val}forestdays",
-                     "G_train-forest+sampleA", f"H_train-forest+complex+general+sampleA_val-{n_val}forestdays"]
+                     "E_train-" + base["E"],
+                     f"F_train-{base[best]}+complex+general_val-{n_val}forestdays",
+                     f"G_train-{base[best]}+sampleA",
+                     f"H_train-{base[best]}+complex+general+sampleA_val-{n_val}forestdays"]
+    assert (out / "run_log.txt").read_text().count("results in") == 8
 
     a = out / "A_train-clearing+forest"
     assert (a / "Training/Selection_Tables/rumble_clearing/rumble_clearing_00-24hr_56days.txt").exists()
@@ -191,9 +198,9 @@ def test_all_steps(source, monkeypatch):
         assert m["sets"]["sampleB"]["fruitpunch_method"]["support"] > 0
         assert (out / n / "results" / "summary.md").read_text().count("|") > 20
         assert (out / n / "results" / "detections" / "sampleB_detections.txt").exists()
-    g = json.load(open(out / "G_train-forest+sampleA" / "config.json"))
+    g = json.load(open(out / names[6] / "config.json"))
     assert "Test 2: Sample A" not in [t["name"] for t in g["tests"]]
-    e = json.load(open(out / "E_train-forest+noise" / "results" / "metrics.json"))
+    e = json.load(open(out / names[4] / "results" / "metrics.json"))
     assert e["training"]["negatives_used_from_noise_and_random"] > 0
     assert (out / "comparison.md").read_text().count("\n|") >= 9
 

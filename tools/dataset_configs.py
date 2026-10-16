@@ -31,12 +31,15 @@ Steps (each can be re-run; finished work is kept):
   embed    run AVES over every day once; shared by all configurations (GPU, slow)
   run      train + score each configuration; results go in <configuration>\\results
   compare  one table across all configurations: <out>\\comparison.md
-  all      plan, embed, run, compare
+  all      plan, embed, run, compare (the default)
 
-Example (Windows):
+Everything in one go (Windows); rerunning it resumes where it stopped:
 
-  python tools\\dataset_configs.py all --configs A B C D
-  python tools\\dataset_configs.py all --configs E F G H --best B
+  python tools\\dataset_configs.py
+
+It runs A-D, picks the one with the best F1 on validation, builds E on it, picks
+the better of that and E, and builds F, G and H on the winner. The choices are
+written to <out>\\best_choice.txt and everything printed to <out>\\run_log.txt.
 """
 import argparse
 import csv
@@ -886,62 +889,70 @@ def write_csv(w, path, rows):
 
 
 def cmd_run(a, pools, w):
-    import torch
     for letter in a.configs:
-        cfg_dir = find_config_dir(a.out, letter)
-        if not cfg_dir:
-            log(f"{letter}: no configuration folder yet (run `plan` first), skipping")
-            continue
-        cfg = json.load(open(os.path.join(cfg_dir, "config.json")))
-        res = os.path.join(cfg_dir, "results")
-        if os.path.exists(os.path.join(res, "metrics.json")) and not a.rerun:
-            log(f"{letter}: results already there (use --rerun to redo)")
-            continue
-        log(f"=== {cfg['name']}")
-        ds, tinfo = training_data(cfg, pools, a.cache, a.seed)
-        log(f"training frames: {tinfo}")
-        with w.open(os.path.join(res, "training_log.txt")) as logf:
-            logf.write(json.dumps(tinfo, indent=1) + "\n")
-            model = train(ds, a.minutes, a.seed, logf)
-        torch.save(model.state_dict(), w.check(os.path.join(res, "model.pth")))
+        try:
+            run_one(a, pools, w, letter)
+        except Exception:
+            import traceback
+            log(f"{letter}: FAILED, carrying on with the others:\n{traceback.format_exc()}")
 
-        sets = [dict(cfg["validation"], key="validation")] + cfg["tests"]
-        metrics = {"name": cfg["name"], "components": cfg["components"], "training": tinfo, "sets": {}}
-        sweeps = {}
-        for s in sets:
-            log(f"scoring {s['name']}")
-            dets, files, fpm = detect(model, s, pools, a.cache, w,
-                                      os.path.join(res, "detections", f"{s['key']}_detections.txt"), a.seed)
-            truth = truth_boxes(pools, files)
-            rows = elp_sweep(truth, dets, files)
-            sweeps[s["key"]] = (rows, truth, dets, files)
-            if rows:
-                write_csv(w, os.path.join(res, f"elp_method_{s['key']}_all_thresholds.csv"), rows)
-            metrics["sets"][s["key"]] = {"name": s["name"], "fruitpunch_method": fpm,
-                                         "days": len(files), "hours": sum(h for *_, h in files)}
 
-        val_rows = sweeps["validation"][0]
-        # detections only exist where the mean rumble probability is over 0.5, so lower
-        # thresholds change nothing; among equal F1s keep the lowest threshold
-        cands = [r for r in val_rows or [] if r["threshold"] >= 0.5]
-        best = max(cands, key=lambda r: (r["f1"], -r["threshold"])) if cands else None
-        thr = best["threshold"] if best else 0.5
-        metrics["threshold_from_validation"] = thr
-        for key, (rows, truth, dets, files) in sweeps.items():
-            m = metrics["sets"][key]
-            m["elp_at_validation_threshold"] = at(rows, thr)
-            m["elp_at_0.5"] = at(rows, 0.5)
-            if rows and key != "vehicle":
-                m["elp_best_f1_on_this_set_for_reference"] = max(rows, key=lambda r: r["f1"])
-            if key == "sampleB":
-                m[f"elp_without_{SAMPLE_B_ODD_DAY}"] = at(
-                    elp_sweep(truth, dets, files, lambda k: day_of(k) != SAMPLE_B_ODD_DAY), thr)
-            if key in ("sampleA", "sampleB"):
-                m["elp_by_habitat"] = {h: at(elp_sweep(truth, dets, files, lambda k, h=h: HABITAT.get(k[:5]) == h), thr)
-                                       for h in sorted(set(HABITAT.values()))}
-        w.json(os.path.join(res, "metrics.json"), metrics)
-        write_summary(w, os.path.join(res, "summary.md"), cfg, metrics)
-        log(f"{letter}: results in {res}")
+def run_one(a, pools, w, letter):
+    import torch
+    cfg_dir = find_config_dir(a.out, letter)
+    if not cfg_dir:
+        log(f"{letter}: no configuration folder yet (run `plan` first), skipping")
+        return
+    cfg = json.load(open(os.path.join(cfg_dir, "config.json")))
+    res = os.path.join(cfg_dir, "results")
+    if os.path.exists(os.path.join(res, "metrics.json")) and not a.rerun:
+        log(f"{letter}: results already there (use --rerun to redo)")
+        return
+    log(f"=== {cfg['name']}")
+    ds, tinfo = training_data(cfg, pools, a.cache, a.seed)
+    log(f"training frames: {tinfo}")
+    with w.open(os.path.join(res, "training_log.txt")) as logf:
+        logf.write(json.dumps(tinfo, indent=1) + "\n")
+        model = train(ds, a.minutes, a.seed, logf)
+    torch.save(model.state_dict(), w.check(os.path.join(res, "model.pth")))
+
+    sets = [dict(cfg["validation"], key="validation")] + cfg["tests"]
+    metrics = {"name": cfg["name"], "components": cfg["components"], "training": tinfo, "sets": {}}
+    sweeps = {}
+    for s in sets:
+        log(f"scoring {s['name']}")
+        dets, files, fpm = detect(model, s, pools, a.cache, w,
+                                  os.path.join(res, "detections", f"{s['key']}_detections.txt"), a.seed)
+        truth = truth_boxes(pools, files)
+        rows = elp_sweep(truth, dets, files)
+        sweeps[s["key"]] = (rows, truth, dets, files)
+        if rows:
+            write_csv(w, os.path.join(res, f"elp_method_{s['key']}_all_thresholds.csv"), rows)
+        metrics["sets"][s["key"]] = {"name": s["name"], "fruitpunch_method": fpm,
+                                     "days": len(files), "hours": sum(h for *_, h in files)}
+
+    val_rows = sweeps["validation"][0]
+    # detections only exist where the mean rumble probability is over 0.5, so lower
+    # thresholds change nothing; among equal F1s keep the lowest threshold
+    cands = [r for r in val_rows or [] if r["threshold"] >= 0.5]
+    best = max(cands, key=lambda r: (r["f1"], -r["threshold"])) if cands else None
+    thr = best["threshold"] if best else 0.5
+    metrics["threshold_from_validation"] = thr
+    for key, (rows, truth, dets, files) in sweeps.items():
+        m = metrics["sets"][key]
+        m["elp_at_validation_threshold"] = at(rows, thr)
+        m["elp_at_0.5"] = at(rows, 0.5)
+        if rows and key != "vehicle":
+            m["elp_best_f1_on_this_set_for_reference"] = max(rows, key=lambda r: r["f1"])
+        if key == "sampleB":
+            m[f"elp_without_{SAMPLE_B_ODD_DAY}"] = at(
+                elp_sweep(truth, dets, files, lambda k: day_of(k) != SAMPLE_B_ODD_DAY), thr)
+        if key in ("sampleA", "sampleB"):
+            m["elp_by_habitat"] = {h: at(elp_sweep(truth, dets, files, lambda k, h=h: HABITAT.get(k[:5]) == h), thr)
+                                   for h in sorted(set(HABITAT.values()))}
+    w.json(os.path.join(res, "metrics.json"), metrics)
+    write_summary(w, os.path.join(res, "summary.md"), cfg, metrics)
+    log(f"{letter}: results in {res}")
 
 
 def _p(v, digits=3):
@@ -1060,17 +1071,59 @@ def cmd_compare(a, w):
 
 ################################################################################
 
+def validation_f1(out, letter):
+    d = find_config_dir(out, letter)
+    mp = os.path.join(d, "results", "metrics.json") if d else ""
+    if not os.path.exists(mp):
+        return None
+    r = json.load(open(mp))["sets"]["validation"]["elp_at_validation_threshold"]
+    return r["f1"] if r else None
+
+
+def pick_best(a, w, letters, why):
+    """The configuration with the best ELP F1 on its validation set (never on the tests)."""
+    scores = {l: validation_f1(a.out, l) for l in letters}
+    scores = {l: f for l, f in scores.items() if f is not None}
+    if not scores:
+        sys.exit(f"can't pick the best of {letters}: none of them has results")
+    best = max(scores, key=lambda l: (scores[l], -letters.index(l)))
+    msg = (f"{why}: picked {best} (validation F1: "
+           + ", ".join(f"{l} {f:.3f}" for l, f in scores.items()) + ")")
+    log(msg)
+    with w.open(os.path.join(a.out, "best_choice.txt"), "a") as f:
+        f.write(time.strftime("%Y-%m-%d %H:%M ") + msg + "\n")
+    return best
+
+
+class Tee:
+    """Copy everything printed into <out>\\run_log.txt as well."""
+
+    def __init__(self, path):
+        self.f, self.out = open(path, "a", encoding="utf-8"), sys.stdout
+
+    def write(self, s):
+        self.out.write(s)
+        self.f.write(s)
+        self.f.flush()
+
+    def flush(self):
+        self.out.flush()
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("step", choices=["plan", "embed", "run", "compare", "all"])
+    p.add_argument("step", nargs="?", default="all", choices=["plan", "embed", "run", "compare", "all"],
+                   help="default: all")
     p.add_argument("--source", default=DEFAULT_SOURCE,
                    help=f"your copy of the Datasets folder (read only; default {DEFAULT_SOURCE})")
     p.add_argument("--out", help="where the configuration folders go (default <source>\\Configurations)")
     p.add_argument("--cache", help="embedding cache, shared by all configurations "
-                                   "(default <out>\\_embedding_cache; needs ~60 GB)")
-    p.add_argument("--configs", nargs="+", default=list("ABCD"), type=str.upper,
-                   help="which configurations (default A B C D)")
-    p.add_argument("--best", type=str.upper, help="winner of A-D (for E), or of A-E (for F, G, H)")
+                                   "(default <out>\\_embedding_cache; needs ~50 GB)")
+    p.add_argument("--configs", nargs="+", default=list(ALL_LETTERS), type=str.upper,
+                   help="which configurations (default all, A to H)")
+    p.add_argument("--best", type=str.upper,
+                   help="base for E-H. Default: picked automatically on validation "
+                        "(best of A-D for E, then best of that and E for F, G, H)")
     p.add_argument("--copy-audio", action="store_true",
                    help="also copy the .wav files into each configuration folder (hundreds of GB each)")
     p.add_argument("--minutes", type=float, default=2, help="training time per configuration (FruitPunch: 2)")
@@ -1086,16 +1139,40 @@ def main(argv=None):
     root = find_dataset_root(a.source)
     # never write into the original data, or into the dataset folders of the copy
     w = Writer([a.out, a.cache], [ORIGINAL_DATA, os.path.join(root, "Training"), os.path.join(root, "Testing")])
-    log(f"reading datasets from {root}; writing to {a.out}")
-    pools = load_pools(root) if a.step != "compare" else None
-    if a.step in ("plan", "all"):
-        cmd_plan(a, pools, w)
-    if a.step in ("embed", "all"):
-        cmd_embed(a, pools, w)
-    if a.step in ("run", "all"):
-        cmd_run(a, pools, w)
-    if a.step in ("compare", "all"):
-        cmd_compare(a, w)
+    w.makedirs(a.out)
+    stdout = sys.stdout
+    sys.stdout = Tee(w.check(os.path.join(a.out, "run_log.txt")))
+    try:
+        log(f"reading datasets from {root}; writing to {a.out}")
+        pools = load_pools(root) if a.step != "compare" else None
+        configs = a.configs
+        if a.step == "all" and not a.best and any(c not in BASE_CONFIGS for c in configs):
+            # one go: A-D, pick the best on validation, E on top of it, pick again, then F-H
+            a.configs = [c for c in configs if c in BASE_CONFIGS]
+            cmd_plan(a, pools, w)
+            cmd_embed(a, pools, w)
+            cmd_run(a, pools, w)
+            best = pick_best(a, w, list("ABCD"), "best of A-D")
+            if "E" in configs:
+                a.best, a.configs = best, ["E"]
+                cmd_plan(a, pools, w)
+                cmd_run(a, pools, w)
+                best = pick_best(a, w, [best, "E"], f"best of {best} and E")
+            a.best, a.configs = best, [c for c in configs if c in "FGH"]
+            cmd_plan(a, pools, w)
+            cmd_run(a, pools, w)
+            cmd_compare(a, w)
+            return
+        if a.step in ("plan", "all"):
+            cmd_plan(a, pools, w)
+        if a.step in ("embed", "all"):
+            cmd_embed(a, pools, w)
+        if a.step in ("run", "all"):
+            cmd_run(a, pools, w)
+        if a.step in ("compare", "all"):
+            cmd_compare(a, w)
+    finally:
+        sys.stdout = stdout
 
 
 if __name__ == "__main__":
