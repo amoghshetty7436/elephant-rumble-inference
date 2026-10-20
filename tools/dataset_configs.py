@@ -40,6 +40,14 @@ Everything in one go (Windows); rerunning it resumes where it stopped:
 It runs A-D, picks the one with the best F1 on validation, builds E on it, picks
 the better of that and E, and builds F, G and H on the winner. The choices are
 written to <out>\\best_choice.txt and everything printed to <out>\\run_log.txt.
+
+Repeat runs, to see how much results move by chance (E on C, then E on A, 3 seeds each):
+
+  python tools\\dataset_configs.py --configs E --best C --seeds 0 1 2
+  python tools\\dataset_configs.py --configs E --best A --seeds 0 1 2
+
+Each run goes in <configuration>\\results_seed<n>; <out>\\comparison_seeds.md compares them
+at the threshold that reaches --target-recall (default 0.90) on validation.
 """
 import argparse
 import csv
@@ -82,6 +90,7 @@ nn10a_20201013""".split()
 NAME_FIXES = {"nn04a_20200428_": "nn04a_20200429_"}
 
 SAMPLE_B_ODD_DAY = "nn08c_20230104"  # reported with and without
+THRESHOLD_STEP = 0.01  # ELP scoring sweep; the F1 rule still picks from multiples of 0.05
 
 # Nouabale (nn) site_descriptions.xlsx
 HABITAT = {}
@@ -413,6 +422,25 @@ def find_config_dir(out, letter):
     return None
 
 
+def config_dir(a, pools, letter):
+    """The folder of this configuration as `plan` names it now (two E folders can exist
+    side by side, e.g. E built on C and E built on A); falls back to the first match."""
+    comps = resolve_components(letter, a.best, a.out)
+    if comps and pools:
+        d = os.path.join(a.out, design(letter, comps, pools, a.seed)["name"])
+        if os.path.exists(os.path.join(d, "config.json")):
+            return d
+    return find_config_dir(a.out, letter)
+
+
+def results_runs(a):
+    """(results folder name, training seed) for each training run of a configuration.
+    One run in `results` by default; with --seeds, one `results_seed<n>` per seed."""
+    if not getattr(a, "seeds", None):
+        return [("results", a.seed)]
+    return [(f"results_seed{s}", s) for s in a.seeds]
+
+
 def design(letter, components, pools, seed):
     """Which files go to training, validation and testing for one configuration."""
     train, n_clear = {}, 0
@@ -709,8 +737,10 @@ class Clock:
         """(letter, estimate) for configurations without results yet."""
         out = []
         for letter in letters:
-            d = find_config_dir(self.a.out, letter)
-            if d and os.path.exists(os.path.join(d, "results", "metrics.json")) and not self.a.rerun:
+            d = config_dir(self.a, self.pools, letter)
+            runs = [r for r, _ in results_runs(self.a)
+                    if self.a.rerun or not (d and os.path.exists(os.path.join(d, r, "metrics.json")))]
+            if not runs:
                 continue
             if d:
                 cfg = json.load(open(os.path.join(d, "config.json")))
@@ -718,7 +748,7 @@ class Clock:
                 best = self.a.best or best_guess
                 comps = resolve_components(letter, best if best in BASE_CONFIGS else "A", self.a.out)
                 cfg = design(letter, comps, self.pools, self.a.seed)
-            out.append((letter, self.config_estimate(cfg)))
+            out.append((letter, self.config_estimate(cfg) * len(runs)))
         return out
 
     def report(self, stage, embed_left_s=0.0, letters=(), best_guess="A"):
@@ -997,7 +1027,8 @@ def elp_sweep(truth, dets, files, keep=None):
     if not files:
         return None
     hours = sum(h for _, _, h in files)
-    rows = elp_score.score(truth, dets, [k for _, k, _ in files], hours_per_file=hours / len(files))
+    rows = elp_score.score(truth, dets, [k for _, k, _ in files], hours_per_file=hours / len(files),
+                           step=THRESHOLD_STEP)
     for r in rows:
         p, rc = r["precision"], r["recall"]
         r["f1"] = 2 * p * rc / (p + rc) if p == p and rc == rc and p + rc > 0 else 0.0
@@ -1028,29 +1059,41 @@ def cmd_run(a, pools, w, clock=None):
 
 
 def run_one(a, pools, w, letter, clock):
-    import torch
-    cfg_dir = find_config_dir(a.out, letter)
+    cfg_dir = config_dir(a, pools, letter)
     if not cfg_dir:
         log(f"{letter}: no configuration folder yet (run `plan` first), skipping")
         return
     cfg = json.load(open(os.path.join(cfg_dir, "config.json")))
-    res = os.path.join(cfg_dir, "results")
-    if os.path.exists(os.path.join(res, "metrics.json")) and not a.rerun:
-        log(f"{letter}: results already there (use --rerun to redo)")
-        return
-    log(f"=== {cfg['name']}")
+    for res_name, seed in results_runs(a):
+        res = os.path.join(cfg_dir, res_name)
+        if os.path.exists(os.path.join(res, "metrics.json")) and not a.rerun:
+            log(f"{letter} {res_name}: results already there (use --rerun to redo)")
+            continue
+        train_and_score(a, pools, w, cfg, res, seed, clock)
+
+
+def pick_threshold_for_recall(rows, target):
+    """Highest threshold (>= 0.5) whose recall still reaches the target; 0.5 if none does."""
+    ok = [r for r in rows or [] if r["threshold"] >= 0.5 and r["recall"] == r["recall"]
+          and r["recall"] >= target - 1e-9]
+    return max(r["threshold"] for r in ok) if ok else 0.5
+
+
+def train_and_score(a, pools, w, cfg, res, seed, clock):
+    import torch
+    log(f"=== {cfg['name']} ({os.path.basename(res)}, training seed {seed})")
     expected, t_cfg = clock.config_estimate(cfg), time.time()
     clock.report(f"setup {cfg['name']} (expected {fmt_dur(expected)})", 0,
                  getattr(a, "all_letters", a.configs), a.best or "A")
     n_train = sum(len(f) for f in cfg["train"].values())
     t0 = time.time()
-    ds, tinfo = training_data(cfg, pools, a.cache, a.seed)
+    ds, tinfo = training_data(cfg, pools, a.cache, seed)
     clock.learn("load_s_per_day", time.time() - t0, n_train)
     log(f"training frames: {tinfo}")
     with w.open(os.path.join(res, "training_log.txt")) as logf:
         logf.write(json.dumps(tinfo, indent=1) + "\n")
         t0 = time.time()
-        model = train(ds, a.minutes, a.seed, logf)
+        model = train(ds, a.minutes, seed, logf)
         clock.learn("train_overhead_s", max(0.0, time.time() - t0 - a.minutes * 60), 1)
     torch.save(model.state_dict(), w.check(os.path.join(res, "model.pth")))
 
@@ -1061,7 +1104,7 @@ def run_one(a, pools, w, letter, clock):
     for s in sets:
         log(f"scoring {s['name']}")
         dets, files, fpm = detect(model, s, pools, a.cache, w,
-                                  os.path.join(res, "detections", f"{s['key']}_detections.txt"), a.seed)
+                                  os.path.join(res, "detections", f"{s['key']}_detections.txt"), seed)
         truth = truth_boxes(pools, files)
         rows = elp_sweep(truth, dets, files)
         sweeps[s["key"]] = (rows, truth, dets, files)
@@ -1074,14 +1117,20 @@ def run_one(a, pools, w, letter, clock):
     clock.learn("score_s_per_day", time.time() - t_score, max(1, n_eval))
     val_rows = sweeps["validation"][0]
     # detections only exist where the mean rumble probability is over 0.5, so lower
-    # thresholds change nothing; among equal F1s keep the lowest threshold
-    cands = [r for r in val_rows or [] if r["threshold"] >= 0.5]
+    # thresholds change nothing; among equal F1s keep the lowest threshold. The F1 rule
+    # stays on the 0.05 grid of the first run so its numbers remain comparable.
+    cands = [r for r in val_rows or [] if r["threshold"] >= 0.5
+             and abs(r["threshold"] * 20 - round(r["threshold"] * 20)) < 1e-6]
     best = max(cands, key=lambda r: (r["f1"], -r["threshold"])) if cands else None
     thr = best["threshold"] if best else 0.5
     metrics["threshold_from_validation"] = thr
+    thr_r = pick_threshold_for_recall(val_rows, a.target_recall)
+    metrics["target_recall"] = a.target_recall
+    metrics["threshold_for_target_recall"] = thr_r
     for key, (rows, truth, dets, files) in sweeps.items():
         m = metrics["sets"][key]
         m["elp_at_validation_threshold"] = at(rows, thr)
+        m["elp_at_target_recall_threshold"] = at(rows, thr_r)
         m["elp_at_0.5"] = at(rows, 0.5)
         if rows and key != "vehicle":
             m["elp_best_f1_on_this_set_for_reference"] = max(rows, key=lambda r: r["f1"])
@@ -1104,13 +1153,13 @@ def run_one(a, pools, w, letter, clock):
                             "fp_per_hour": r["fp_per_hour"]})
         if per_day:
             write_csv(w, os.path.join(res, f"elp_method_{key}_per_day.csv"), per_day)
-    metrics["settings"] = {"minutes": a.minutes, "seed": a.seed, "best": a.best,
+    metrics["settings"] = {"minutes": a.minutes, "seed": seed, "data_seed": a.seed, "best": a.best,
                            "fake_embedder": a.fake_embedder, "source": a.source, "cache": a.cache}
     metrics["run_time_minutes"] = round((time.time() - t_cfg) / 60, 1)
     w.json(os.path.join(res, "metrics.json"), metrics)
     write_summary(w, os.path.join(res, "summary.md"), cfg, metrics)
     clock.done.append((f"setup {cfg['name']}", expected, time.time() - t_cfg))
-    log(f"{letter}: results in {res}")
+    log(f"{cfg['letter']}: results in {res}")
     clock.report(f"finished setup {cfg['name']}", 0, getattr(a, "all_letters", a.configs), a.best or "A")
 
 
@@ -1125,6 +1174,9 @@ def write_summary(w, path, cfg, m):
          f"{m['training']['rumble_frames']} rumble frames, as many negative frames.", "",
          f"Score threshold picked on validation ({cfg['validation']['name']}): **{thr:.2f}** "
          "(the one with the best F1 under ELP scoring).", "",
+         *([f"Threshold that reaches {m['target_recall']:.0%} recall on validation: "
+            f"**{m['threshold_for_target_recall']:.2f}** (results there in comparison_seeds.md).", ""]
+           if "threshold_for_target_recall" in m else []),
          "## ELP method (whole days, detector validation rules)", "",
          "A detection counts when it overlaps a truth box by more than 1% in time and in frequency. "
          "Precision = detections that hit a rumble / all detections; recall = rumbles found / all rumbles; "
@@ -1229,6 +1281,69 @@ def cmd_compare(a, w):
     write_csv(w, os.path.join(a.out, "comparison.csv"), csv_rows)
     log("wrote", os.path.join(a.out, "comparison.md"))
     print("\n".join(t))
+    compare_seeds(a, w)
+
+
+SEED_COLS = [("validation", "recall", "Val R", 3), ("validation", "precision", "Val P", 3),
+             ("validation", "fp_per_hour", "Val FP/h", 2),
+             ("sampleB", "recall", "Test 1 R", 3), ("sampleB", "precision", "Test 1 P", 3),
+             ("sampleB", "fp_per_hour", "Test 1 FP/h", 2),
+             ("sampleA", "recall", "Test 2 R", 3), ("sampleA", "precision", "Test 2 P", 3),
+             ("sampleA", "fp_per_hour", "Test 2 FP/h", 2), ("vehicle", "fp_per_hour", "Vehicle FP/h", 2)]
+
+
+def compare_seeds(a, w):
+    """Repeat runs (results_seed<n>) side by side at the threshold that reaches the target
+    recall on validation. The configuration with the fewest validation false alarms per
+    hour, on average over its runs, is the one to build on."""
+    groups = {}
+    for d in sorted(os.listdir(a.out)) if os.path.isdir(a.out) else []:
+        for r in sorted(os.listdir(os.path.join(a.out, d))) if os.path.isdir(os.path.join(a.out, d)) else []:
+            mp = os.path.join(a.out, d, r, "metrics.json")
+            if r.startswith("results_seed") and os.path.exists(mp):
+                m = json.load(open(mp))
+                if "threshold_for_target_recall" in m:
+                    groups.setdefault(d, []).append((r[len("results_seed"):], m))
+    if not groups:
+        return
+    head = ["Configuration", "Seed", "Threshold"] + [c[2] for c in SEED_COLS]
+    target = next(iter(groups.values()))[0][1]["target_recall"]
+    t = ["# Repeat runs", "",
+         f"Each configuration trained once per seed. ELP method at the threshold that reaches "
+         f"{target:.0%} recall on the validation days (highest such threshold, in 0.01 steps). "
+         "At equal recall, fewer false alarms is better: the winner is picked on the average "
+         "validation FP/h, never on the tests. The min-max row shows how much runs differ by chance.", "",
+         "| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
+    csv_rows, means = [], {}
+    for d, runs in groups.items():
+        vals = {c: [] for c in SEED_COLS}
+        for seed, m in runs:
+            cells = [d, seed, f"{m['threshold_for_target_recall']:.2f}"]
+            for c in SEED_COLS:
+                r = (m["sets"].get(c[0]) or {}).get("elp_at_target_recall_threshold")
+                v = r[c[1]] if r else None
+                if v is not None and v == v:
+                    vals[c].append(v)
+                cells.append(_p(v, c[3]))
+            t.append("| " + " | ".join(cells) + " |")
+            csv_rows.append(dict(zip(head, cells)))
+        mean = [d, "mean", ""] + [_p(sum(v) / len(v), c[3]) if v else "-" for c, v in vals.items()]
+        spread = [d, "min-max", ""] + [f"{_p(min(v), c[3])}-{_p(max(v), c[3])}" if v else "-"
+                                        for c, v in vals.items()]
+        t += ["| " + " | ".join(f"**{x}**" if x else x for x in mean) + " |", "| " + " | ".join(spread) + " |"]
+        csv_rows += [dict(zip(head, mean)), dict(zip(head, spread))]
+        fp = vals[SEED_COLS[2]]
+        if fp:
+            means[d] = (sum(fp) / len(fp), len(fp))
+    if len(means) > 1:
+        best = min(means, key=lambda d: means[d][0])
+        t += ["", f"Fewest validation false alarms at {target:.0%} recall: **{best}** ("
+              + ", ".join(f"{d} {v:.2f}/h over {n} runs" for d, (v, n) in means.items()) + ")."]
+    with w.open(os.path.join(a.out, "comparison_seeds.md")) as f:
+        f.write("\n".join(t) + "\n")
+    write_csv(w, os.path.join(a.out, "comparison_seeds.csv"), csv_rows)
+    log("wrote", os.path.join(a.out, "comparison_seeds.md"))
+    print("\n".join(t))
 
 
 ################################################################################
@@ -1290,6 +1405,12 @@ def main(argv=None):
                    help="also copy the .wav files into each configuration folder (hundreds of GB each)")
     p.add_argument("--minutes", type=float, default=2, help="training time per configuration (FruitPunch: 2)")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--seeds", nargs="+", type=int,
+                   help="train each configuration once per seed, into results_seed<n> (the first "
+                        "run's `results` folder is left alone), and compare the runs in comparison_seeds.md")
+    p.add_argument("--target-recall", type=float, default=0.90,
+                   help="also pick the threshold that reaches this recall on validation, and "
+                        "compare false alarms there (default 0.90)")
     p.add_argument("--rerun", action="store_true", help="redo configurations that already have results")
     p.add_argument("--fake-embedder", action="store_true", help=argparse.SUPPRESS)
     a = p.parse_args(argv)

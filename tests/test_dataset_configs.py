@@ -214,6 +214,22 @@ def test_all_steps(source, monkeypatch):
     assert set(json.load(open(out / "_timing.json"))) >= {"embed_s_per_audio_hour", "score_s_per_day"}
     assert (out / "comparison.md").read_text().count("\n|") >= 9
 
+    # repeat runs of E on two bases, compared at a target recall; first-run results left alone
+    e_first = out / names[4] / "results" / "metrics.json"
+    stamp = e_first.stat().st_mtime
+    for base_letter in ("C", "A"):
+        dc.main(common + ["--configs", "E", "--best", base_letter, "--seeds", "0", "1"])
+    for folder in ("E_train-clearing+noise", "E_train-clearing+forest+noise"):
+        for seed in (0, 1):
+            m = json.load(open(out / folder / f"results_seed{seed}" / "metrics.json"))
+            assert m["settings"]["seed"] == seed and m["target_recall"] == 0.9
+            assert 0.5 <= m["threshold_for_target_recall"] <= 1
+            assert "elp_at_target_recall_threshold" in m["sets"]["validation"]
+    assert e_first.stat().st_mtime == stamp
+    seeds = (out / "comparison_seeds.md").read_text()
+    assert "E_train-clearing+noise | 1 |" in seeds and "E_train-clearing+forest+noise | min-max" in seeds
+    assert "Fewest validation false alarms at 90% recall" in seeds
+
     # the dataset folders themselves are untouched
     after = snapshot(source)
     changed = [p for p, t in before.items() if after.get(p) != t]
