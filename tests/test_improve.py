@@ -122,6 +122,15 @@ def test_all_and_final(source, monkeypatch):  # noqa: F811
     im.main(common + ["final"])
     fin = (root / "final.md").read_text()
     assert "baseline" in fin and "6 final alarm rules" in fin and "Sample B" in fin
+    assert (root / "final_detections" / "sampleB_detections.txt").exists()
+    assert json.load(open(root / "final_detections" / "final_model.json"))["experiment"] == final
+    assert c["3"]["winner"] in c["combos"]["ranked"]  # the stage winners are always among the combinations
+
+    # an experiment that would not fit in memory stops early instead of swapping
+    monkeypatch.setattr(im, "total_ram_bytes", lambda: 10_000)
+    cfg = json.load(open(out / im.BASE_CONFIG / "config.json"))
+    with pytest.raises(MemoryError):
+        im.build_training_set(cfg, dc.load_pools(str(source)), str(out / "_embedding_cache"), dict(im.BASE), {}, [0, 1])
     after = snapshot(source)
     assert not [p for p, m in before.items() if after.get(p) != m and not p.startswith(str(out))]
     assert not [p for p in after if p not in before and not p.startswith(str(out))]

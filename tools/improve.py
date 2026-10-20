@@ -61,6 +61,7 @@ TARGET_RECALL = 0.80
 ALSO_SHOWN = (0.85, 0.90)
 EXTRA_CAP = 0.75     # noise + random frames may be at most this share of the negatives
 HARD_SHARE = 1 / 3   # mined false alarms may be at most this share of the negatives
+MAX_RAM_SHARE = 0.55  # an experiment whose training embeddings need more of the RAM is skipped
 
 # the options of each stage; the first value is FruitPunch's / E2's
 NOISE_REPEATS = [1, 2, 3, 5, 10, 20]
@@ -299,17 +300,42 @@ def take(idx, f, rng):
     return np.sort(np.concatenate(parts)) if parts else idx[:0]
 
 
+def total_ram_bytes():
+    """Physical memory of this PC (0 if unknown)."""
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            class MS(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+            m = MS()
+            m.dwLength = ctypes.sizeof(MS)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
+            return int(m.ullTotalPhys)
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    except Exception:
+        return 0
+
+
 def build_training_set(cfg, pools, cache, k, mined, seeds):
     """Rumble frames + neg x as many negatives, as windows of 2*ctx+1 embeddings.
 
     Negatives: noise clips (each used `noise` times) and `rand` random frames per forest
     day, together at most EXTRA_CAP of them; mined false alarms, at most HARD_SHARE; gap
-    frames between rumbles for the rest. Each seed draws its own sample.
+    frames between rumbles for the rest. The sample is drawn once (from the first seed) and
+    shared by all runs, which then differ in initialisation and batch order: separate
+    samples per run would multiply the embeddings held in memory (by up to 5x with wide
+    windows). Stops early with MemoryError if the embeddings would not fit in RAM.
     Returns (bank [M, 768] fp16, [(windows [N, W], y [N], info)] one per seed)."""
     import numpy as np
     import torch
     ctx, ratio = k["ctx"], k["neg"]
-    rngs = [np.random.default_rng(s) for s in seeds]
+    rngs = [np.random.default_rng(seeds[0])]
+    limit = int(MAX_RAM_SHARE * total_ram_bytes())
     pos_n, gap_n = ex.label_counts(cfg, pools)
     n_pos = sum(pos_n.values())
     n_neg = ratio * n_pos
@@ -326,7 +352,7 @@ def build_training_set(cfg, pools, cache, k, mined, seeds):
     f_mined = mined_target / max(1, mined_avail)
 
     banks, offset = [], 0
-    per_seed = [{"wins": [], "ys": [], "counts": dict(rumble=0, gap=0, noise=0, random=0, mined=0)} for _ in seeds]
+    per_seed = [{"wins": [], "ys": [], "counts": dict(rumble=0, gap=0, noise=0, random=0, mined=0)} for _ in rngs]
     offsets = np.arange(-ctx, ctx + 1)
 
     def add(day, groups):
@@ -341,6 +367,9 @@ def build_training_set(cfg, pools, cache, k, mined, seeds):
         if not allc:
             return
         need = np.unique(np.clip(np.concatenate(allc)[:, None] + offsets[None, :], 0, day.n - 1))
+        if limit and (offset + len(need)) * 768 * 2 > limit:
+            raise MemoryError(f"{describe(k)} needs more than {limit / 2**30:.0f} GB of embeddings in memory "
+                              f"({MAX_RAM_SHARE:.0%} of this PC's RAM); skipped")
         rows = day.frames(need.tolist())
         if rows.shape[0] != len(need):
             raise RuntimeError("embeddings missing for this day: run `python tools\\improve.py embed`")
@@ -374,7 +403,15 @@ def build_training_set(cfg, pools, cache, k, mined, seeds):
             if ctx and day.kind != "day":
                 raise RuntimeError(f"{p} {key} has no whole-day embeddings: run `python tools\\improve.py embed`")
             add(day, groups)
-    bank = torch.cat(banks)
+    # join the pieces without holding two full copies at once
+    bank = torch.empty((offset, 768), dtype=banks[0].dtype)
+    at = 0
+    banks.reverse()
+    while banks:
+        piece = banks.pop()
+        bank[at:at + piece.shape[0]] = piece
+        at += piece.shape[0]
+    log(f"training set: {bank.shape[0]} embeddings in memory ({bank.shape[0] * 1536 / 2**30:.1f} GB)")
     out = []
     for s in per_seed:
         y = torch.cat(s["ys"])
@@ -386,7 +423,7 @@ def build_training_set(cfg, pools, cache, k, mined, seeds):
                 "negatives_per_rumble": round(neg / max(1, c["rumble"]), 2),
                 "noise_and_random_share_of_negatives": round((c["noise"] + c["random"]) / max(1, neg), 3)}
         out.append((torch.cat(s["wins"]), y, info))
-    return bank, out
+    return bank, out * len(seeds)  # one shared sample, trained once per seed
 
 
 ################################################################################
@@ -407,6 +444,7 @@ class Lab:
         self._val = None
         self.t_start, self.trained, self.train_seconds = time.time(), 0, []
         self.stage = "starting"
+        self.retrained = set()  # with --rerun: experiments already retrained by this process
 
     def dir(self, name):
         return os.path.join(self.root, name)
@@ -451,8 +489,9 @@ class Lab:
 
     def train(self, name):
         """Train every missing seed of one experiment (and the rounds it builds on)."""
-        if self.trained_ok(name) and not self.a.rerun:
+        if self.trained_ok(name) and (not self.a.rerun or name in self.retrained):
             return
+        self.retrained.add(name)
         import torch
         k = knobs_of(name)
         mined, n_new = {}, 0
@@ -476,7 +515,8 @@ class Lab:
                 if not os.path.exists(path) or self.a.rerun:
                     log(f"run {s}: {info}")
                     m = ex.train_model(bank, win, y, k["ctx"], self.a.minutes, s, logf, self.device)
-                    torch.save(m.state_dict(), self.w.check(path))
+                    torch.save(m.state_dict(), self.w.check(path + ".tmp"))
+                    os.replace(path + ".tmp", path)  # a half-written model never looks finished
                 infos.append(info)
         del bank, sets
         self.w.json(os.path.join(self.dir(name), "training.json"),
@@ -484,21 +524,24 @@ class Lab:
                      "newly_mined_frames": n_new, "minutes_per_run": self.a.minutes,
                      "train_minutes": round((time.time() - t0) / 60, 1),
                      "base_configuration": self.a.base_config})
-        res = os.path.join(self.dir(name), "results.json")
-        if os.path.exists(res):
-            os.remove(self.w.check(res))
+        for f in os.listdir(self.dir(name)):
+            if f.startswith("results"):
+                os.remove(self.w.check(os.path.join(self.dir(name), f)))
         self.trained += 1
         self.train_seconds.append(time.time() - t0)
 
     def mine(self, prev):
         """False alarms of `prev` (its first run, the locked rule, its cut-off for the target
         recall) on the training days, plus everything `prev` had mined itself."""
-        r = self.json(prev, "results.json")
+        r = self.result(prev, self.locked_rule())
         mined = {}
         for row in self.json(prev, "mined.json") or []:
             mined[(row["pool"], row["key"])] = list(row["frames"])
         rule = r["rule"]
         cut = (r["summary"]["per_seed"][0].get(f"at_{int(round(self.a.target_recall * 100))}") or {}).get("threshold", 0.5)
+        # very confident false alarms may be unmarked rumbles, so they are not mined; but keep
+        # the band above the cut-off open when the cut-off itself is very high
+        skip_above = max(ex.HARD_SKIP_ABOVE, (cut + 1) / 2)
         ctx = knobs_of(prev)["ctx"]
         model = self.models(prev)[0]
         n_new = 0
@@ -513,7 +556,7 @@ class Lab:
                 labels = self.pools[p].labels.get(key, [])
                 got = set(mined.get((p, key), []))
                 for a0, b0, sc in zip(*alarms(prob, rule)):
-                    if sc < cut or sc >= ex.HARD_SKIP_ABOVE:
+                    if sc < cut or sc >= skip_above:
                         continue
                     t0, t1 = a0 * FRAME_SECONDS - ex.HARD_PAD_S, b0 * FRAME_SECONDS + ex.HARD_PAD_S
                     if any(l.start < t1 and l.end > t0 for l in labels):
@@ -523,14 +566,17 @@ class Lab:
                     got |= new
                 if got:
                     mined[(p, key)] = sorted(got)
-        log(f"mined {n_new} new false-alarm frames from {prev}")
+        log(f"mined {n_new} new false-alarm frames from {prev} (scores {cut:.3f} to {skip_above:.4f})"
+            + ("; WARNING nothing new to learn from, this round repeats the previous one" if not n_new else ""))
         return mined, n_new
 
     # ---- scoring ------------------------------------------------------------
     def evaluate(self, name, rule):
         """Validation results of a trained experiment under `rule` (cached per rule)."""
-        r = self.json(name, "results.json")
-        if r and r["rule"] == rule and not self.a.rerun_scoring:
+        r = self.result(name, rule)
+        if r and not self.a.rerun_scoring:
+            if self.json(name, "results.json") != r:
+                self.w.json(os.path.join(self.dir(name), "results.json"), r)
             return r
         self.train(name)
         k = knobs_of(name)
@@ -545,14 +591,31 @@ class Lab:
              "training": tr["runs"][0] if tr else None, "train_minutes": tr and tr.get("train_minutes"),
              "validation": self.cfg["validation"]["name"], "validation_days": len(files),
              "validation_rumbles": truth.n, "finished": time.strftime("%Y-%m-%d %H:%M")}
+        r["settings"] = {"target_recall": self.a.target_recall, "seeds": self.seeds, "minutes": self.a.minutes}
+        self.w.json(os.path.join(self.dir(name), f"results_{rule_key(rule)}.json"), r)
         self.w.json(os.path.join(self.dir(name), "results.json"), r)
-        write_curve(self.w, self.dir(name), name, sweeps)
+        try:
+            write_curve(self.w, self.dir(name), name, sweeps)
+        except OSError as e:  # e.g. the file is open in Excel: the results are saved anyway
+            log(f"WARNING could not write the curve of {name}: {e}")
         fp = summ["fp_per_hour"]
         log(f"{name}: " + (f"{fp[0]:.3f} false alarms/h at {self.a.target_recall:.0%} recall "
                            f"(runs {fp[1]:.3f}-{fp[2]:.3f})" if fp else
                            f"never reaches {self.a.target_recall:.0%} recall (max {summ['max_recall'][0]:.3f})"))
-        cmd_compare(self)
+        try:
+            cmd_compare(self)
+        except OSError as e:  # e.g. improve.csv is open in Excel; rewritten after the next experiment
+            log(f"WARNING could not rewrite the results table: {e}")
         return r
+
+    def result(self, name, rule):
+        """Saved validation results of `name` under `rule` with this run's settings, or None."""
+        r = self.json(name, f"results_{rule_key(rule)}.json")
+        st = (r or {}).get("settings") or {}
+        if r and r["rule"] == rule and st.get("target_recall") == self.a.target_recall \
+                and st.get("seeds") == self.seeds and st.get("minutes") == self.a.minutes:
+            return r
+        return None
 
     def speed(self, model, ctx, files, rule):
         """Seconds per 24 h of audio for the classifier + alarm rule, on this GPU and CPU."""
@@ -635,7 +698,8 @@ class Lab:
         """Every combination of RULE_OPTIONS on the saved validation probabilities of
         `name`'s runs; the one with the fewest false alarms at the target recall wins."""
         c = self.choices().get(stage)
-        if c and c.get("experiment") == name and not self.a.rerun_scoring:
+        if c and c.get("experiment") == name and c.get("target_recall") == self.a.target_recall \
+                and c.get("seeds") == self.seeds and not self.a.rerun_scoring:
             return c["rule"]
         self.train(name)
         self.report(f"{why}: trying {n_rules()} alarm rules on {name}")
@@ -659,7 +723,8 @@ class Lab:
                 "runs_reaching_target": s["runs_reaching_target"]} for _, r, s in rows[:30]]
         self.w.json(os.path.join(self.root, f"rules_{stage}.json"), {"experiment": name, "top": top,
                     "fruitpunch_rule": {"fp_per_hour": fp_rule[2]["fp_per_hour"], "max_recall": fp_rule[2]["max_recall"]}})
-        self.save_choice(stage, {"experiment": name, "rule": best, "why": msg, "time": time.strftime("%Y-%m-%d %H:%M")})
+        self.save_choice(stage, {"experiment": name, "rule": best, "why": msg, "target_recall": self.a.target_recall,
+                                 "seeds": self.seeds, "time": time.strftime("%Y-%m-%d %H:%M")})
         return best
 
     # ---- progress -------------------------------------------------------------
@@ -768,7 +833,8 @@ def cmd_all(lab):
         names = [name_of(dict(state, **{knob: v})) for v in opts]
         win, ranked = lab.pick(stage, names, rule, f"stage {stage} ({label})")
         state = knobs_of(win)
-        best_two[knob] = sorted({knobs_of(n)[knob] for n in ranked[:2]})
+        others = [knobs_of(n)[knob] for n in ranked if n != win]
+        best_two[knob] = sorted({state[knob]} | set(others[:1]))  # the winner and the best other option
     lab.report("stage 4 (combinations of the best two of each stage)")
     combos = [dict(zip(best_two, v), hard=0) for v in itertools.product(*best_two.values())]
     win, _ = lab.pick("combos", [name_of(k) for k in combos], rule, "stage 4 (combinations)")
@@ -797,7 +863,11 @@ def cmd_compare(lab):
     rows = []
     if os.path.isdir(lab.root):
         for n in sorted(os.listdir(lab.root)):
-            r = lab.json(n, "results.json") if os.path.isdir(lab.dir(n)) else None
+            if not os.path.isdir(lab.dir(n)):
+                continue
+            fin = lab.choices().get("final") or {}
+            r = (fin.get("winner") == n and lab.result(n, fin["rule"])) or lab.result(n, lab.locked_rule()) \
+                or lab.json(n, "results.json")
             if r:
                 rows.append(r)
     if not rows:
@@ -879,20 +949,31 @@ def cmd_final(lab):
          "| Step | Experiment | Validation FA/h | " + " | ".join(f"{s['name']} recall / precision / FA/h" for s in tests) + " |",
          "|---|---|---|" + "---|" * len(tests)]
     out = {"steps": []}
+    cache = {}  # (experiment, set) -> (truth, probs per run); the baseline appears twice
+    notes = []
     for label, name, rule in steps:
         r = lab.evaluate(name, rule)
         cuts = [(ps.get(key) or {}).get("threshold") for ps in r["summary"]["per_seed"]]
-        models = lab.models(name)
+        if any(c is None for c in cuts):
+            notes.append(f"{label}: {sum(c is None for c in cuts)} run(s) never reached "
+                         f"{lab.a.target_recall:.0%} recall on validation and are left out.")
         row = {"step": label, "experiment": name, "rule": rule, "cut_offs": cuts, "sets": {}}
         cells = []
         for s in tests:
-            files = [(p, k, Day(lab.a.cache, p, k).hours) for p, keys in s["files"].items() for k in keys]
-            truth = Truth(lab.pools, files)
-            probs = lab.probs(models, knobs_of(name)["ctx"], files)
+            if (name, s["key"]) not in cache:
+                cache.clear()  # keep only one experiment's test probabilities in memory
+                models = lab.models(name)
+                keys = [(p, k) for p, ks in s["files"].items() for k in ks]
+                probs = lab.probs(models, knobs_of(name)["ctx"], [(p, k, 0) for p, k in keys])
+                files = [(p, k, len(probs[0][(p, k)]) * FRAME_SECONDS / 3600) for p, k in keys]
+                cache[(name, s["key"])] = (Truth(lab.pools, files), probs, files)
+            truth, probs, files = cache[(name, s["key"])]
             per = []
             for pr, cut in zip(probs, cuts):
+                if cut is None:
+                    continue
                 sw = sweep(truth, pr, rule)
-                i = int(abs(sw["threshold"] - (cut if cut is not None else 0.5)).argmin())
+                i = int(abs(sw["threshold"] - cut).argmin())
                 per.append({m: float(sw[m][i]) for m in ("recall", "precision", "fp_per_hour")})
             row["sets"][s["key"]] = per
             mean = {}
@@ -900,13 +981,50 @@ def cmd_final(lab):
                 v = [x[m] for x in per if x[m] == x[m]]
                 mean[m] = statistics.mean(v) if v else float("nan")
             cells.append(f"{_f(mean['recall'])} / {_f(mean['precision'])} / {_f(mean['fp_per_hour'], 2)}")
+            if label.startswith("6"):
+                write_final_detections(lab, s, name, rule, r, probs, files, truth)
         out["steps"].append(row)
         t.append(f"| {label} | {name} | {_stat(r['summary']['fp_per_hour'])} | " + " | ".join(cells) + " |")
+    if notes:
+        t += [""] + [f"- {n}" for n in notes]
+    t += ["", "The final model's detections (its best run on validation) are Raven tables in "
+              "`final_detections\\`, with each test set's precision-recall curve."]
     lab.w.json(os.path.join(lab.root, "final.json"), out)
     with lab.w.open(os.path.join(lab.root, "final.md")) as f:
         f.write("\n".join(t) + "\n")
     print("\n".join(t))
     log(f"wrote {os.path.join(lab.root, 'final.md')}")
+
+
+def write_final_detections(lab, s, name, rule, r, probs, files, truth):
+    """Raven table of the final model's best run on one test set, at that run's cut-off,
+    plus the set's precision-recall curve for every run."""
+    key = f"at_{int(round(lab.a.target_recall * 100))}"
+    per = r["summary"]["per_seed"]
+    ok = [i for i, ps in enumerate(per) if ps.get(key)]
+    if not ok:
+        return
+    best = min(ok, key=lambda i: per[i][key]["fp_per_hour"])
+    cut = per[best][key]["threshold"]
+    d = os.path.join(lab.root, "final_detections")
+    with lab.w.open(os.path.join(d, f"{s['key']}_detections.txt")) as f:
+        wr = csv.writer(f, delimiter="\t")
+        wr.writerow(["Selection", "View", "Channel", "Begin Time (s)", "End Time (s)", "Low Freq (Hz)",
+                     "High Freq (Hz)", "Begin Path", "File Offset (s)", "Begin File", "Score"])
+        sel, elapsed = 0, 0.0
+        for p, k, h in files:
+            path = lab.pools[p].sounds[k]
+            for a0, b0, sc in zip(*alarms(probs[best][(p, k)], rule)):
+                if sc < cut:
+                    continue
+                sel += 1
+                bt, et = a0 * FRAME_SECONDS, b0 * FRAME_SECONDS
+                wr.writerow([sel, "Spectrogram 1", 1, f"{elapsed + bt:.3f}", f"{elapsed + et:.3f}", 5, 250,
+                             path, f"{bt:.3f}", os.path.basename(path), f"{sc:.4f}"])
+            elapsed += h * 3600
+    write_curve(lab.w, os.path.join(d, s["key"]), f"{name} on {s['name']}", [sweep(truth, pr, rule) for pr in probs])
+    lab.w.json(os.path.join(d, "final_model.json"), {"experiment": name, "run": lab.seeds[best],
+               "model": os.path.join(lab.dir(name), f"model_seed{lab.seeds[best]}.pth"), "rule": rule, "cut_off": cut})
 
 
 def keep_awake():

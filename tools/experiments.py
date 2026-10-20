@@ -339,10 +339,17 @@ def train_model(bank, win, y, ctx, minutes, seed, logf, device):
     perm = torch.randperm(n, generator=torch.Generator().manual_seed(42))
     n_val = max(1, int(round(n * 0.05)))
     va, tr = perm[:n_val], perm[n_val:]
-    try:
-        bank_d = bank.to(device)
-    except RuntimeError:  # GPU too small for the bank: gather on the CPU instead
-        bank_d = bank
+    bank_d = bank
+    fits = device != "cuda"
+    if device == "cuda":
+        # only when it fits comfortably: on Windows an oversized copy may "succeed" in shared
+        # system memory and make every batch slow instead of failing
+        fits = bank.numel() * bank.element_size() < 0.5 * torch.cuda.mem_get_info()[0]
+    if fits:
+        try:
+            bank_d = bank.to(device)
+        except RuntimeError:  # GPU too small for the bank: gather on the CPU instead
+            bank_d = bank
     win_d = win.to(bank_d.device)
     y_d = y.to(device)
 
