@@ -909,6 +909,17 @@ def cmd_final(lab):
     log(f"wrote {os.path.join(lab.root, 'final.md')}")
 
 
+def keep_awake():
+    """Ask Windows not to sleep while this script runs (what video players do; the screen
+    may still turn off and lock). Ends by itself when the script exits."""
+    if os.name == "nt":
+        try:
+            import ctypes
+            ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)  # CONTINUOUS | SYSTEM_REQUIRED
+        except Exception:
+            pass
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("step", nargs="?", default="all", choices=["embed", "all", "compare", "final"])
@@ -926,6 +937,7 @@ def main(argv=None):
     a = p.parse_args(argv)
     a.out = a.out or os.path.join(a.source, "Configurations")
     a.cache = a.cache or os.path.join(a.out, "_embedding_cache")
+    keep_awake()
     root = dc.find_dataset_root(a.source)
     imp_root = os.path.join(a.out, "_improve")
     w = dc.Writer([imp_root, a.cache], [dc.ORIGINAL_DATA, os.path.join(root, "Training"), os.path.join(root, "Testing")])
