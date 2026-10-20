@@ -915,7 +915,7 @@ def keep_awake():
     if os.name == "nt":
         try:
             import ctypes
-            ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)  # CONTINUOUS | SYSTEM_REQUIRED
+            ctypes.windll.kernel32.SetThreadExecutionState(ctypes.c_uint(0x80000000 | 0x00000001))  # CONTINUOUS | SYSTEM_REQUIRED
         except Exception:
             pass
 
