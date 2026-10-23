@@ -1,0 +1,363 @@
+<title>Rumble Detector Training Setups</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one readable column; answer first, then setups, charts, lessons, next steps; full table folded at the end. */
+:root {
+  --bg: #f3f5f2; --surface: #ffffff; --fg: #18211c; --muted: #5a6760; --line: #d8ded9;
+  --accent: #2f6b4f; --accent-soft: #dcebe2; --win: #b5711b; --win-soft: #f6e6cc;
+  --bad: #a8433a; --bar2: #8fb3a0; --bar-muted: #c3ccc6;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121815; --surface: #1a221e; --fg: #e4ebe6; --muted: #9aa8a0; --line: #2d3832;
+  --accent: #7cc3a0; --accent-soft: #23362c; --win: #e8a54e; --win-soft: #3a2c17;
+  --bad: #e27f74; --bar2: #4f7a64; --bar-muted: #3a4640; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121815; --surface: #1a221e; --fg: #e4ebe6; --muted: #9aa8a0; --line: #2d3832;
+  --accent: #7cc3a0; --accent-soft: #23362c; --win: #e8a54e; --win-soft: #3a2c17;
+  --bad: #e27f74; --bar2: #4f7a64; --bar-muted: #3a4640; color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.55; }
+.wrap { max-width: 860px; margin: 0 auto; padding-block: 40px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 44px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(30px, 5vw, 44px); font-weight: 800; letter-spacing: -0.01em; }
+h2 { font-size: 24px; font-weight: 800; }
+h3 { font-size: 17px; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-weight: 600; }
+section { display: flex; flex-direction: column; gap: 16px; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+small, .small { font-size: 13.5px; }
+
+.hero { display: flex; flex-direction: column; gap: 14px; }
+.answer { background: var(--win-soft); border-radius: 10px; padding: 20px 22px; display: flex; flex-direction: column; gap: 10px; }
+.answer strong { color: var(--fg); }
+.takeaways { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.take { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.take .big { font-family: var(--display); font-weight: 800; font-size: 28px; color: var(--accent); }
+@media (max-width: 640px) { .takeaways { grid-template-columns: 1fr; } }
+
+.terms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.term { border-top: 2px solid var(--accent); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.term b { font-weight: 600; }
+@media (max-width: 640px) { .terms { grid-template-columns: 1fr; } }
+
+.setups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.setup { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 2px 12px; align-items: start; }
+.setup .letter { grid-row: span 2; font-family: var(--display); font-weight: 800; font-size: 22px; width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.setup.win { border-color: var(--win); }
+.setup.win .letter { background: var(--win); color: var(--surface); }
+.setup .what { font-weight: 600; }
+.setup .why { font-size: 14px; color: var(--muted); }
+.pill { display: inline-block; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 8px; border-radius: 99px; background: var(--win); color: var(--surface); margin-left: 6px; vertical-align: 2px; }
+@media (max-width: 640px) { .setups { grid-template-columns: 1fr; } }
+
+.chart { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 16px 10px; overflow-x: auto; }
+.chart svg { display: block; width: 100%; min-width: 520px; height: auto; }
+.chart svg text { font-family: var(--body); fill: var(--fg); font-size: 13px; }
+.chart svg .lab { fill: var(--muted); font-size: 12px; }
+.chart svg .val { font-family: var(--mono); font-size: 12px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13.5px; color: var(--muted); padding: 2px 4px 8px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+
+.lessons { display: flex; flex-direction: column; gap: 14px; padding: 0; margin: 0; list-style: none; }
+.lessons li { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 12px; }
+.lessons li::before { content: counter(l); counter-increment: l; font-family: var(--display); font-weight: 800; color: var(--accent); font-size: 18px; line-height: 1.4; }
+.lessons { counter-reset: l; }
+.lessons div { display: flex; flex-direction: column; gap: 4px; }
+
+.compare { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+.compare th, .compare td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.compare th { font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.06em; }
+.compare td.num, .compare th.num { text-align: right; }
+.up { color: var(--accent); font-weight: 600; }
+.down { color: var(--bad); font-weight: 600; }
+.tablebox { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+
+.next { background: var(--accent-soft); border-radius: 10px; padding: 18px 22px; display: flex; flex-direction: column; gap: 10px; }
+.next ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+summary { cursor: pointer; padding: 14px 18px; font-weight: 600; }
+summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+details .inner { padding: 0 8px 12px; overflow-x: auto; }
+.full { border-collapse: collapse; font-size: 13px; min-width: 760px; width: 100%; }
+.full th, .full td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.full th:first-child, .full td:first-child { text-align: left; }
+.full th { color: var(--muted); font-weight: 600; }
+.full tr.win td { background: var(--win-soft); }
+.full .grp { text-align: center; border-bottom: none; }
+footer { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">Elephant Listening Project · FruitPunch rumble detector · run of 16 October 2026, follow-ups 20–21 October</div>
+  <h1>Which training data makes the best rumble detector?</h1>
+  <p>We trained the same detector 8 times, each time on a different mix of recordings, and tested every version on whole days of forest audio it had never heard. A ninth version (E2) followed on 20 October.</p>
+  <div class="answer">
+    <p><strong>Answer: setup E won.</strong> It was trained on the clearing recordings plus short clips of other sounds (thunder, rain, wind, engines, voices, wings, silence), labelled as "not a rumble". Compared with FruitPunch's original mix (setup A), it makes fewer false alarms everywhere and finds almost as many rumbles.</p>
+    <p><strong>Follow-up (20 Oct):</strong> adding the forest recordings back to E (version E2) gives a tie, not a clear win. E2 finds more rumbles but raises more false alarms, especially on the vehicle days. <a href="#e2">Details below.</a></p>
+    <p><strong>Improved detector (21 Oct):</strong> building on E2, a step-by-step search over 39 trained versions found a detector that finds about 5 more rumbles in every 100 on both tests, with the same or better precision and fewer vehicle false alarms. <a href="#improved">Details below.</a></p>
+  </div>
+  <div class="takeaways">
+    <div class="take"><span class="big num">0.81</span><span>of E's alarms are real rumbles on Test 2 (A: 0.72)</span></div>
+    <div class="take"><span class="big num">3×</span><span>fewer false alarms than A on the vehicle days (0.28 vs 0.93 an hour)</span></div>
+    <div class="take"><span class="big num">0.68</span><span>of all rumbles found on Test 2 (A: 0.70), so recall barely moved</span></div>
+  </div>
+</header>
+
+<section>
+  <h2>How to read the numbers</h2>
+  <div class="terms">
+    <div class="term"><b>Precision</b><span>Of the alarms the detector raised, how many were real rumbles. 0.81 means 81 of every 100 alarms were real.</span></div>
+    <div class="term"><b>Recall</b><span>Of all the real rumbles, how many the detector found. 0.68 means it found 68 of every 100.</span></div>
+    <div class="term"><b>Overall score (F1)</b><span>One number that combines the two. It is only high when both are high. Higher is better.</span></div>
+    <div class="term"><b>False alarms per hour</b><span>How often it beeps when no elephant called. Lower is better.</span></div>
+  </div>
+  <p class="small muted">Every score is from whole 24-hour recordings, checked the way ELP checks detectors: an alarm counts when its box overlaps a rumble a person marked. Each setup picked its own alarm cut-off on practice days (Complex + General) before it saw the tests.</p>
+</section>
+
+<section>
+  <h2>What was tested</h2>
+  <div class="terms">
+    <div class="term"><b>Test 1 · Sample B</b><span>80 forest days from 2023, 1,577 rumbles. None used in training.</span></div>
+    <div class="term"><b>Test 2 · Sample A</b><span>43 fully reviewed forest days, 967 rumbles. Used for training only in G and H, so they skip it.</span></div>
+    <div class="term"><b>Practice days</b><span>RumbleComplex + RumbleGeneral, 59 forest days. Used to pick the winner and the cut-off, never as a final score.</span></div>
+    <div class="term"><b>Vehicle check</b><span>3 days from Kakum with engine noise and no elephants. Any alarm there is a false alarm.</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>The 8 setups</h2>
+  <p class="muted small">"Rumble examples" counts the 0.64-second pieces of rumble the detector learned from.</p>
+  <div class="setups">
+    <div class="setup"><span class="letter">A</span><span class="what">Clearing + forest</span><span class="why">What FruitPunch did. 192,410 rumble examples, 90% from clearings.</span></div>
+    <div class="setup"><span class="letter">B</span><span class="what">Forest only</span><span class="why">Does clearing data hurt in forest? 19,504 rumble examples.</span></div>
+    <div class="setup"><span class="letter">C</span><span class="what">Clearing only</span><span class="why">How much does the forest data add? 172,906 rumble examples.</span></div>
+    <div class="setup"><span class="letter">D</span><span class="what">Forest + 10 clearing days, 50/50</span><span class="why">An even mix. 38,912 rumble examples.</span></div>
+    <div class="setup win"><span class="letter">E</span><span class="what">Best of A–D (C) + noise clips <span class="pill">Winner</span></span><span class="why">254 clips of thunder, rain, wind, vehicles and more as "not a rumble".</span></div>
+    <div class="setup"><span class="letter">F</span><span class="what">E + Complex + General</span><span class="why">Moves the practice days into training; 15 forest days become the practice set.</span></div>
+    <div class="setup"><span class="letter">G</span><span class="what">E + Sample A</span><span class="why">Moves Test 2 into training, so only Test 1 scores it.</span></div>
+    <div class="setup"><span class="letter">H</span><span class="what">E + Complex + General + Sample A</span><span class="why">All the extra forest days we have.</span></div>
+  </div>
+  <p class="small muted">The script picked the winners on the practice days: C beat A, B and D (overall score 0.505 vs 0.503, 0.321, 0.389), then E beat C (0.652 vs 0.505). F, G and H were built on E.</p>
+</section>
+
+<section>
+  <h2>Overall score on the two tests</h2>
+  <div class="chart">
+    <div class="legend"><span><i style="background:var(--accent)"></i>Test 1 · Sample B</span><span><i style="background:var(--bar2)"></i>Test 2 · Sample A</span><span><i style="background:var(--win)"></i>Winner (E)</span></div>
+    <svg id="f1chart" viewBox="0 0 760 524" role="img" aria-label="Overall score (F1) per setup on Test 1 and Test 2"></svg>
+  </div>
+  <p class="small muted">E is best on both tests. C, G and A are close behind; the gaps of 0.02 or less between them could be luck, because each setup was trained once. B (forest only) and D are clearly worse.</p>
+</section>
+
+<section>
+  <h2>False alarms on the vehicle days</h2>
+  <div class="chart">
+    <svg id="vchart" viewBox="0 0 760 364" role="img" aria-label="False alarms per hour on vehicle days per setup"></svg>
+  </div>
+  <p class="small muted">Engine noise is a classic trap for rumble detectors. E raised 20 alarms in 72 hours of vehicle recordings; B raised 491.</p>
+</section>
+
+<section id="e2">
+  <h2>Follow-up: does adding forest back to the winner help?</h2>
+  <p>E2 is E with the 130 forest days added back (clearing + forest + noise clips). On the practice days it scored higher than E (0.679 vs 0.652), but on the two tests it is a trade rather than an improvement.</p>
+  <div class="tablebox">
+  <table class="compare">
+    <thead><tr><th>Cut-off 0.90</th><th class="num">E (clearing + noise)</th><th class="num">E2 (+ forest)</th><th class="num">Change</th></tr></thead>
+    <tbody class="num">
+      <tr><td>Practice days, overall score</td><td class="num">0.652</td><td class="num">0.679</td><td class="num up">better</td></tr>
+      <tr><td>Test 1, precision / recall</td><td class="num">0.69 / 0.83</td><td class="num">0.65 / 0.86</td><td class="num muted">trade</td></tr>
+      <tr><td>Test 1, overall score</td><td class="num">0.754</td><td class="num">0.741</td><td class="num muted">about the same</td></tr>
+      <tr><td>Test 1, false alarms per hour</td><td class="num">0.14</td><td class="num">0.16</td><td class="num muted">about the same</td></tr>
+      <tr><td>Test 2, precision / recall</td><td class="num">0.81 / 0.68</td><td class="num">0.76 / 0.73</td><td class="num muted">trade</td></tr>
+      <tr><td>Test 2, overall score</td><td class="num">0.737</td><td class="num">0.743</td><td class="num muted">about the same</td></tr>
+      <tr><td>Test 2, false alarms per hour</td><td class="num">0.10</td><td class="num">0.14</td><td class="num down">worse</td></tr>
+      <tr><td>Vehicle false alarms per hour</td><td class="num">0.28</td><td class="num">0.79</td><td class="num down">worse</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small muted">The forest data helps the detector find 3 to 5 more rumbles in every 100, but it also brings back false alarms, nearly 3 times as many on the vehicle days (about 57 vs 20 in 72 hours). The overall scores differ by about 0.01, which is within what chance can do with one training run. So neither version is clearly better. Because missing a rumble costs more than a false alarm in this study, we built the improvement work on E2.</p>
+</section>
+
+<section id="improved">
+  <h2>Improving E2 step by step</h2>
+  <p>Each step tried several options and kept one only if it beat the others by more than chance. Every option was trained 5 times. Options were judged on the practice days by <b>false alarms per hour when the detector finds 80% of the rumbles</b>, because missing rumbles matters more than extra alarms here. The tests were scored once, at the end.</p>
+  <div class="chart">
+    <div class="legend"><span><i style="background:var(--bar-muted)"></i>Start</span><span><i style="background:var(--accent)"></i>After a step that helped</span><span><i style="background:var(--win)"></i>Final model</span></div>
+    <svg viewBox="0 0 760 216" role="img" aria-label="False alarms per hour at 80 percent recall after each step"><text x="0" y="29">FruitPunch's alarm rule (start)</text><rect x="290" y="14" width="378" height="22" rx="3" style="fill:var(--bar-muted)"/><text class="val" x="676" y="29">0.50</text><text x="0" y="69">1 · New alarm rule</text><rect x="290" y="54" width="226" height="22" rx="3" style="fill:var(--accent)"/><text class="val" x="524" y="69">0.30</text><text x="0" y="109">2 · 1,000 random forest frames a day</text><rect x="290" y="94" width="163" height="22" rx="3" style="fill:var(--accent)"/><text class="val" x="461" y="109">0.21</text><text x="0" y="149">3 · 1.92 s listening window</text><rect x="290" y="134" width="154" height="22" rx="3" style="fill:var(--accent)"/><text class="val" x="452" y="149">0.20</text><text x="0" y="189">6 · Rule re-tuned for the final model</text><rect x="290" y="174" width="145" height="22" rx="3" style="fill:var(--win)"/><text class="val" x="443" y="189">0.19</text></svg>
+  </div>
+  <p class="small muted">False alarms per hour on the practice days at 80% recall, lower is better. Steps 2a (more noise clips), 2c (more "not a rumble" examples), 4 (combinations) and 5 (learning from its own false alarms) kept the earlier choice, so they are not shown.</p>
+  <div class="tablebox">
+  <table class="compare">
+    <thead><tr><th>Untouched tests</th><th class="num">E2</th><th class="num">Improved</th><th class="num">Change</th></tr></thead>
+    <tbody class="num">
+      <tr><td>Test 1, recall / precision</td><td class="num">0.86 / 0.65</td><td class="num">0.91 / 0.65</td><td class="num up">more found</td></tr>
+      <tr><td>Test 1, false alarms per hour</td><td class="num">0.16</td><td class="num">0.15</td><td class="num muted">about the same</td></tr>
+      <tr><td>Test 2, recall / precision</td><td class="num">0.73 / 0.76</td><td class="num">0.78 / 0.80</td><td class="num up">better</td></tr>
+      <tr><td>Test 2, false alarms per hour</td><td class="num">0.14</td><td class="num">0.11</td><td class="num up">better</td></tr>
+      <tr><td>Vehicle false alarms per hour</td><td class="num">0.79</td><td class="num">0.64</td><td class="num up">better</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small muted">E2 is shown at its 0.90 cut-off. The improved detector uses the cut-off that found 80% of rumbles on the practice days, averaged over its 5 training runs.</p>
+  <ol class="lessons">
+    <li><div><h3>The alarm rule mattered most.</h3>
+      <p>FruitPunch raises an alarm when the probability stays above 0.5 for 4 frames. Letting quieter but longer stretches count (above 0.2 for at least 8 smoothed frames, with gaps of up to 2 frames joined) cut false alarms by 40% at the same recall, and it lets the detector reach 91–95% of the rumbles at its lowest cut-off.</p></div></li>
+    <li><div><h3>Random forest audio is the most useful "not a rumble" example.</h3>
+      <p>1,000 random frames a day from the forest days cut false alarms by another 28%. Using none was the worst option of all 39 (0.40 an hour), and 2,000 was no better than 1,000.</p></div></li>
+    <li><div><h3>More noise clips and more negatives made it worse.</h3>
+      <p>Repeating the noise clips 2 to 20 times, or using 2 to 5 negatives per rumble, raised false alarms each time.</p></div></li>
+    <li><div><h3>A longer listening window barely matters, and it is cheap.</h3>
+      <p>1.92 s was best, but every window from 1.9 s to 12 s scored within chance of each other. The classifier takes under 0.2 s per 24 h of audio at any window, against 31 s for AVES, so speed is not a concern.</p></div></li>
+    <li><div><h3>Learning from its own false alarms did not help.</h3>
+      <p>One round made it worse (0.38 an hour), and three rounds only tied the simpler model, so it was left out.</p></div></li>
+  </ol>
+  <p class="small muted">Final model: E2 data, 1,000 random forest frames a day, noise clips once, 1 negative per rumble, 1.92 s window, no extra rounds. Caveat: on Test 2 recall lands at 0.78, just below the 80% target, because the cut-off was set on the practice days. Leave a small safety margin when setting the cut-off for use.</p>
+</section>
+
+<section>
+  <h2>What we learned</h2>
+  <ol class="lessons">
+    <li><div><h3>Teaching the detector what noise sounds like helped most.</h3>
+      <p>Adding the 254 noise clips (E vs C) cut false alarms on the practice days from 0.67 to 0.27 an hour and raised precision on every test. The clips made up only 7% of the "not a rumble" examples, so giving them a bigger share may help more.</p></div></li>
+    <li><div><h3>Clearing data does not hurt in forest. There is just too little forest data to replace it.</h3>
+      <p>Forest only (B) was the worst setup by far: 0.20 precision on Test 1, against 0.65 for clearing only. The forest set has 9 times fewer rumble examples than the clearing set. Clearing only (C) and clearing + forest (A) scored about the same.</p></div></li>
+    <li><div><h3>Adding more forest days to training did not help.</h3>
+      <p>F and H scored lower than E on Test 1 (0.67 and 0.71 vs 0.75), and G tied with E. These add only 7,000 to 14,000 forest rumble examples next to 173,000 from clearings, and FruitPunch's rule skips many of those days (13 of the 30 Complex days).</p></div></li>
+    <li><div><h3>FruitPunch's own test cannot tell the setups apart.</h3>
+      <p>On FruitPunch's short balanced clips, all 8 setups score 0.95–0.96, including B, which is the worst on whole days by far. Only the whole-day test shows the real differences.</p></div></li>
+    <li><div><h3>One swamp day carries Test 1.</h3>
+      <p>Day nn08c_20230104 holds 1,032 of Test 1's 1,577 rumbles. Without it, E's precision drops from 0.69 to 0.54 and recall from 0.83 to 0.78. On Test 2 the hardest habitat is mixed closed forest, where most setups find only 54–60% of rumbles (E: 54%).</p></div></li>
+    <li><div><h3>The practice days predicted the tests well.</h3>
+      <p>For A to E, the order on the practice days (E, C, A, D, B) matches the order on both tests. So picking on practice days, without peeking at the tests, worked.</p></div></li>
+  </ol>
+</section>
+
+<section>
+  <h2>Winner vs FruitPunch's original mix</h2>
+  <div class="tablebox">
+  <table class="compare">
+    <thead><tr><th>On Test 2 · Sample A, cut-off 0.90</th><th class="num">A (FruitPunch)</th><th class="num">E (winner)</th><th class="num">Change</th></tr></thead>
+    <tbody class="num">
+      <tr><td>Precision</td><td class="num">0.72</td><td class="num">0.81</td><td class="num up">better</td></tr>
+      <tr><td>Recall</td><td class="num">0.70</td><td class="num">0.68</td><td class="num muted">about the same</td></tr>
+      <tr><td>Overall score (F1)</td><td class="num">0.71</td><td class="num">0.74</td><td class="num up">better</td></tr>
+      <tr><td>False alarms per hour</td><td class="num">0.17</td><td class="num">0.10</td><td class="num up">better</td></tr>
+      <tr><td>Vehicle false alarms per hour</td><td class="num">0.93</td><td class="num">0.28</td><td class="num up">better</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="next">
+  <h2>What to do next</h2>
+  <ol>
+    <li>Check the improved detector's alarms by hand in Raven on a few test days, especially in mixed closed forest and on vehicle days, which are still its weakest spots.</li>
+    <li>Choose the cut-off for real use with a small safety margin, so recall stays at or above 80% on new sites.</li>
+    <li>Bigger changes, such as a different feature model or more labelled forest days, can be judged with the same 80%-recall yardstick.</li>
+  </ol>
+</section>
+
+<details>
+  <summary>All numbers, every setup</summary>
+  <div class="inner">
+  <table class="full num">
+    <thead>
+      <tr><th></th><th></th><th></th><th class="grp" colspan="4">Test 1 · Sample B</th><th class="grp" colspan="4">Test 2 · Sample A</th><th></th><th></th></tr>
+      <tr><th>Setup</th><th>Cut-off</th><th>Practice F1</th><th>Prec.</th><th>Recall</th><th>F1</th><th>FA/h</th><th>Prec.</th><th>Recall</th><th>F1</th><th>FA/h</th><th>Vehicle FA/h</th><th>FruitPunch clip F1</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>A clearing + forest</td><td>0.90</td><td>0.503</td><td>0.591</td><td>0.849</td><td>0.697</td><td>0.21</td><td>0.721</td><td>0.700</td><td>0.710</td><td>0.17</td><td>0.93</td><td>0.963</td></tr>
+      <tr><td>B forest only</td><td>0.95</td><td>0.321</td><td>0.197</td><td>0.904</td><td>0.323</td><td>1.33</td><td>0.298</td><td>0.775</td><td>0.430</td><td>1.16</td><td>6.82</td><td>0.962</td></tr>
+      <tr><td>C clearing only</td><td>0.90</td><td>0.505</td><td>0.650</td><td>0.841</td><td>0.733</td><td>0.17</td><td>0.779</td><td>0.691</td><td>0.732</td><td>0.12</td><td>0.46</td><td>0.958</td></tr>
+      <tr><td>D forest + 10 clearing days</td><td>0.95</td><td>0.389</td><td>0.397</td><td>0.839</td><td>0.539</td><td>0.44</td><td>0.531</td><td>0.678</td><td>0.596</td><td>0.37</td><td>2.31</td><td>0.963</td></tr>
+      <tr class="win"><td>E clearing + noise</td><td>0.90</td><td>0.652</td><td>0.693</td><td>0.828</td><td>0.754</td><td>0.14</td><td>0.812</td><td>0.675</td><td>0.737</td><td>0.10</td><td>0.28</td><td>0.953</td></tr>
+      <tr><td>E2 clearing + forest + noise (20 Oct)</td><td>0.90</td><td>0.679</td><td>0.652</td><td>0.859</td><td>0.741</td><td>0.16</td><td>0.762</td><td>0.725</td><td>0.743</td><td>0.14</td><td>0.79</td><td>0.964</td></tr>
+      <tr><td>F E + Complex + General</td><td>0.90</td><td>0.776*</td><td>0.562</td><td>0.826</td><td>0.669</td><td>0.23</td><td>0.704</td><td>0.698</td><td>0.701</td><td>0.18</td><td>0.67</td><td>0.961</td></tr>
+      <tr><td>G E + Sample A</td><td>0.90</td><td>0.656</td><td>0.666</td><td>0.864</td><td>0.752</td><td>0.15</td><td>–</td><td>–</td><td>–</td><td>–</td><td>0.60</td><td>0.964</td></tr>
+      <tr><td>H E + Complex + General + Sample A</td><td>0.90</td><td>0.782*</td><td>0.612</td><td>0.855</td><td>0.713</td><td>0.19</td><td>–</td><td>–</td><td>–</td><td>–</td><td>0.58</td><td>0.964</td></tr>
+    </tbody>
+  </table>
+  <p class="small muted" style="padding:10px 10px 0">* F and H were scored on a different practice set (15 held-out forest training days), so their practice F1 can't be compared with the others. FA/h = false alarms per hour. "–" = Sample A was used for training, so it can't test that setup.</p>
+  </div>
+</details>
+
+<footer>
+  <span>Source: <span class="num">comparison.md</span>, <span class="num">best_choice.txt</span> and each setup's <span class="num">results\metrics.json</span> from <span class="num">L:\ELP\Detectors\Other\Amogh\Dataset\Configurations</span>, produced by <span class="num">tools\dataset_configs.py</span> on the lab PC (RTX 4060, 4 h 13 min in total).</span>
+  <span>Each setup was trained once, for 2 minutes, with FruitPunch's method (frozen AVES model plus a small classifier). Differences of about 0.02 or less may be chance.</span>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  var NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, text) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  var setups = [
+    ["A", "Clearing + forest", 0.697, 0.710],
+    ["B", "Forest only", 0.323, 0.430],
+    ["C", "Clearing only", 0.733, 0.732],
+    ["D", "Forest + clearing 50/50", 0.539, 0.596],
+    ["E", "Clearing + noise", 0.754, 0.737],
+    ["E2", "Clearing + forest + noise", 0.741, 0.743],
+    ["F", "E + Complex + General", 0.669, 0.701],
+    ["G", "E + Sample A", 0.752, null],
+    ["H", "E + Complex + General + A", 0.713, null]
+  ];
+  // F1 chart: grouped horizontal bars, x from 0 to 1
+  var svg = document.getElementById("f1chart");
+  var left = 220, right = 60, top = 28, rowH = 54, w = 760 - left - right;
+  function x(v) { return left + v * w; }
+  [0, 0.25, 0.5, 0.75, 1].forEach(function (t) {
+    svg.appendChild(el("line", { x1: x(t), x2: x(t), y1: top - 6, y2: top + rowH * setups.length, stroke: "var(--line)", "stroke-width": 1 }));
+    svg.appendChild(el("text", { x: x(t), y: top - 12, "text-anchor": "middle", class: "lab" }, t.toFixed(2)));
+  });
+  setups.forEach(function (s, i) {
+    var y = top + i * rowH + 6;
+    var win = s[0] === "E";
+    svg.appendChild(el("text", { x: 8, y: y + 20, "font-weight": win ? 700 : 500 }, s[0] + "  " + s[1]));
+    var bars = [[s[2], win ? "var(--win)" : "var(--accent)"], [s[3], win ? "var(--win)" : "var(--bar2)"]];
+    bars.forEach(function (b, j) {
+      var by = y + j * 20;
+      if (b[0] == null) {
+        svg.appendChild(el("text", { x: left + 4, y: by + 13, class: "lab" }, "not tested (Sample A used in training)"));
+        return;
+      }
+      svg.appendChild(el("rect", { x: left, y: by, width: Math.max(1, b[0] * w), height: 16, rx: 3, fill: b[1], opacity: j === 1 && win ? 0.65 : 1 }));
+      svg.appendChild(el("text", { x: x(b[0]) + 6, y: by + 13, class: "val" }, b[0].toFixed(2)));
+    });
+  });
+  // Vehicle chart: false alarms per hour, x from 0 to 7
+  var v = document.getElementById("vchart");
+  var vals = [["A", 0.93], ["B", 6.82], ["C", 0.46], ["D", 2.31], ["E", 0.28], ["E2", 0.79], ["F", 0.67], ["G", 0.60], ["H", 0.58]];
+  var vl = 60, vr = 70, vt = 28, vh = 34, vw = 760 - vl - vr, max = 7;
+  function vx(n) { return vl + n / max * vw; }
+  [0, 1, 2, 3, 4, 5, 6, 7].forEach(function (t) {
+    v.appendChild(el("line", { x1: vx(t), x2: vx(t), y1: vt - 6, y2: vt + vh * vals.length, stroke: "var(--line)", "stroke-width": 1 }));
+    v.appendChild(el("text", { x: vx(t), y: vt - 12, "text-anchor": "middle", class: "lab" }, String(t)));
+  });
+  vals.forEach(function (d, i) {
+    var y = vt + i * vh + 6, win = d[0] === "E", bad = d[1] > 2;
+    v.appendChild(el("text", { x: 14, y: y + 15, "font-weight": win ? 700 : 500 }, d[0]));
+    v.appendChild(el("rect", { x: vl, y: y, width: Math.max(2, d[1] / max * vw), height: 20, rx: 3, fill: win ? "var(--win)" : bad ? "var(--bad)" : "var(--bar-muted)" }));
+    v.appendChild(el("text", { x: vx(d[1]) + 6, y: y + 15, class: "val" }, d[1].toFixed(2) + " /h"));
+  });
+  v.appendChild(el("text", { x: vl + vw, y: vt + vh * vals.length + 22, "text-anchor": "end", class: "lab" }, "false alarms per hour on vehicle days (lower is better)"));
+})();
+</script>

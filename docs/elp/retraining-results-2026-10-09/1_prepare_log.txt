@@ -1,0 +1,387 @@
+13:35:06 35309 labels for 219 sound files in 4 tables
+13:35:06 using cuda NVIDIA GeForce RTX 4060
+13:35:06 train: leaving out 1 days not in tools\fruitpunch_files_used.txt: ['nn02c_20180625_000000.wav']
+13:35:06 train: 192 sound files, 165 usable, 23 skipped (fewer than 2 labels or negative windows)
+13:35:06 test: 61 sound files, 25 usable, 5 skipped (fewer than 2 labels or negative windows)
+13:35:06 190 days to process (days already in the cache are skipped)
+13:35:42 train 1/165 ceb1_20110103_000000.wav: 230 labels -> 1561 rumble frames, 223 negative windows -> 21422 frames (35 s)
+13:35:42 [..............................]   0.8%  day 1/190  elapsed 0m35s, about 1h10m left
+13:36:23 train 2/165 ceb1_20110107_000000.wav: 294 labels -> 2193 rumble frames, 266 negative windows -> 27869 frames (42 s)
+13:36:23 [..............................]   1.8%  day 2/190  elapsed 1m16s, about 1h08m left
+13:37:04 train 3/165 ceb1_20110108_000000.wav: 323 labels -> 2173 rumble frames, 225 negative windows -> 22604 frames (41 s)
+13:37:04 [..............................]   2.8%  day 3/190  elapsed 1m57s, about 1h06m left
+13:37:23 train 4/165 ceb1_20110109_000000.wav: 90 labels -> 504 rumble frames, 88 negative windows -> 8617 frames (19 s)
+13:37:23 [..............................]   3.2%  day 4/190  elapsed 2m16s, about 1h09m left
+13:37:52 train 5/165 ceb1_20110121_000000.wav: 154 labels -> 932 rumble frames, 184 negative windows -> 19830 frames (29 s)
+13:37:52 [#.............................]   3.8%  day 5/190  elapsed 2m45s, about 1h10m left
+13:38:25 train 6/165 ceb1_20110123_000000.wav: 225 labels -> 1794 rumble frames, 195 negative windows -> 20635 frames (33 s)
+13:38:25 [#.............................]   4.5%  day 6/190  elapsed 3m18s, about 1h09m left
+13:39:15 train 7/165 ceb1_20110128_000000.wav: 403 labels -> 2264 rumble frames, 273 negative windows -> 27846 frames (50 s)
+13:39:15 [#.............................]   5.8%  day 7/190  elapsed 4m08s, about 1h07m left
+13:39:51 train 8/165 ceb1_20110306_000000.wav: 279 labels -> 1393 rumble frames, 164 negative windows -> 15067 frames (36 s)
+13:39:51 [#.............................]   6.6%  day 8/190  elapsed 4m44s, about 1h07m left
+13:40:52 train 9/165 ceb1_20110320_000000.wav: 574 labels -> 3401 rumble frames, 306 negative windows -> 29285 frames (61 s)
+13:40:52 [##............................]   8.2%  day 9/190  elapsed 5m45s, about 1h04m left
+13:41:50 train 10/165 ceb1_20111010_000000.wav: 467 labels -> 3140 rumble frames, 357 negative windows -> 33546 frames (58 s)
+13:41:50 [##............................]   9.7%  day 10/190  elapsed 6m43s, about 1h02m left
+13:42:49 train 11/165 ceb1_20111012_000000.wav: 465 labels -> 2705 rumble frames, 360 negative windows -> 35562 frames (58 s)
+13:42:49 [###...........................]  11.2%  day 11/190  elapsed 7m42s, about 1h01m left
+13:46:54 train 12/165 ceb1_20111017_000000.wav: 3437 labels -> 16713 rumble frames, 685 negative windows -> 47376 frames (245 s)
+13:46:54 [#####.........................]  18.6%  day 12/190  elapsed 11m47s, about 51m26s left
+13:49:41 train 13/165 ceb1_20111107_000000.wav: 2245 labels -> 12831 rumble frames, 530 negative windows -> 39869 frames (168 s)
+13:49:41 [#######.......................]  23.7%  day 13/190  elapsed 14m34s, about 47m00s left
+13:50:46 train 14/165 ceb1_20111112_000000.wav: 500 labels -> 2602 rumble frames, 445 negative windows -> 44021 frames (64 s)
+13:50:46 [#######.......................]  25.4%  day 14/190  elapsed 15m39s, about 45m59s left
+13:52:01 train 15/165 ceb1_20111113_000000.wav: 768 labels -> 4550 rumble frames, 375 negative windows -> 34488 frames (75 s)
+13:52:01 [########......................]  27.5%  day 15/190  elapsed 16m54s, about 44m38s left
+13:56:42 train 16/165 ceb1_20111128_000000.wav: 3853 labels -> 17245 rumble frames, 868 negative windows -> 63973 frames (281 s)
+13:56:42 [##########....................]  36.0%  day 16/190  elapsed 21m35s, about 38m20s left
+13:59:40 train 17/165 ceb1_20111203_000000.wav: 2134 labels -> 11185 rumble frames, 769 negative windows -> 62473 frames (178 s)
+13:59:40 [############..................]  41.3%  day 17/190  elapsed 24m33s, about 34m55s left
+14:03:03 train 18/165 ceb1_20111210_000000.wav: 2519 labels -> 12467 rumble frames, 829 negative windows -> 68253 frames (203 s)
+14:03:03 [##############................]  47.4%  day 18/190  elapsed 27m56s, about 31m02s left
+14:05:49 train 19/165 ceb1_20111211_000000.wav: 1909 labels -> 9565 rumble frames, 726 negative windows -> 55855 frames (166 s)
+14:05:49 [###############...............]  52.1%  day 19/190  elapsed 30m42s, about 28m10s left
+14:06:12 train 20/165 ceb1_20120630_000000.wav: 95 labels -> 509 rumble frames, 95 negative windows -> 10520 frames (22 s)
+14:06:12 [###############...............]  52.5%  day 20/190  elapsed 31m05s, about 28m07s left
+14:07:37 train 21/165 ceb1_20120706_000000.wav: 931 labels -> 5014 rumble frames, 387 negative windows -> 33090 frames (86 s)
+14:07:37 [################..............]  54.9%  day 21/190  elapsed 32m30s, about 26m43s left
+14:08:08 train 22/165 ceb1_20120715_000000.wav: 123 labels -> 793 rumble frames, 213 negative windows -> 24862 frames (31 s)
+14:08:08 [################..............]  55.5%  day 22/190  elapsed 33m01s, about 26m28s left
+14:08:33 train 23/165 ceb1_20120717_000000.wav: 117 labels -> 547 rumble frames, 136 negative windows -> 14706 frames (25 s)
+14:08:33 [################..............]  56.0%  day 23/190  elapsed 33m26s, about 26m19s left
+14:09:00 train 24/165 ceb1_20120727_000000.wav: 122 labels -> 791 rumble frames, 166 negative windows -> 18623 frames (27 s)
+14:09:00 [################..............]  56.5%  day 24/190  elapsed 33m53s, about 26m06s left
+14:09:47 train 25/165 ceb1_20120728_000000.wav: 320 labels -> 2245 rumble frames, 307 negative windows -> 30615 frames (47 s)
+14:09:47 [#################.............]  57.6%  day 25/190  elapsed 34m40s, about 25m30s left
+14:10:19 train 26/165 ceb1_20120731_000000.wav: 160 labels -> 1096 rumble frames, 204 negative windows -> 22870 frames (32 s)
+14:10:19 [#################.............]  58.3%  day 26/190  elapsed 35m12s, about 25m12s left
+14:10:42 train 27/165 ceb1_20120801_000000.wav: 103 labels -> 566 rumble frames, 131 negative windows -> 13905 frames (23 s)
+14:10:42 [#################.............]  58.7%  day 27/190  elapsed 35m35s, about 25m02s left
+14:11:01 train 28/165 ceb1_20120811_000000.wav: 64 labels -> 442 rumble frames, 74 negative windows -> 8606 frames (18 s)
+14:11:01 [#################.............]  59.0%  day 28/190  elapsed 35m54s, about 24m59s left
+14:11:34 train 29/165 ceb1_20120816_000000.wav: 200 labels -> 997 rumble frames, 183 negative windows -> 17797 frames (33 s)
+14:11:34 [#################.............]  59.7%  day 29/190  elapsed 36m27s, about 24m38s left
+14:12:16 train 30/165 ceb1_20120826_000000.wav: 328 labels -> 1849 rumble frames, 236 negative windows -> 22363 frames (42 s)
+14:12:16 [##################............]  60.7%  day 30/190  elapsed 37m09s, about 24m04s left
+14:12:47 train 31/165 ceb1_20120828_000000.wav: 174 labels -> 1044 rumble frames, 179 negative windows -> 18338 frames (31 s)
+14:12:47 [##################............]  61.3%  day 31/190  elapsed 37m40s, about 23m45s left
+14:13:01 train 32/165 ceb1_20150807_000000.wav: 27 labels -> 140 rumble frames, 46 negative windows -> 5446 frames (14 s)
+14:13:01 [##################............]  61.5%  day 32/190  elapsed 37m54s, about 23m46s left
+14:13:20 train 33/165 ceb1_20150810_000000.wav: 53 labels -> 274 rumble frames, 95 negative windows -> 11188 frames (19 s)
+14:13:20 [##################............]  61.7%  day 33/190  elapsed 38m13s, about 23m41s left
+14:14:03 train 34/165 ceb1_20150814_000000.wav: 341 labels -> 1679 rumble frames, 217 negative windows -> 21195 frames (43 s)
+14:14:03 [##################............]  62.7%  day 34/190  elapsed 38m56s, about 23m07s left
+14:14:59 train 35/165 ceb1_20150818_000000.wav: 440 labels -> 2395 rumble frames, 346 negative windows -> 35544 frames (57 s)
+14:14:59 [###################...........]  64.2%  day 35/190  elapsed 39m52s, about 22m15s left
+14:15:11 train 36/165 jobo_20160426_000000.wav: 11 labels -> 45 rumble frames, 27 negative windows -> 3265 frames (12 s)
+14:15:11 [###################...........]  64.2%  day 36/190  elapsed 40m04s, about 22m18s left
+14:16:42 train 37/165 jobo_20160507_000000.wav: 893 labels -> 4315 rumble frames, 502 negative windows -> 44657 frames (91 s)
+14:16:42 [####################..........]  66.8%  day 37/190  elapsed 41m35s, about 20m41s left
+14:18:10 train 38/165 jobo_20160510_000000.wav: 908 labels -> 4466 rumble frames, 456 negative windows -> 43522 frames (88 s)
+14:18:10 [####################..........]  69.2%  day 38/190  elapsed 43m03s, about 19m07s left
+14:18:31 train 39/165 jobo_20160520_000000.wav: 84 labels -> 413 rumble frames, 89 negative windows -> 9169 frames (20 s)
+14:18:31 [####################..........]  69.6%  day 39/190  elapsed 43m24s, about 18m59s left
+14:19:13 train 40/165 jobo_20160530_000000.wav: 289 labels -> 1645 rumble frames, 257 negative windows -> 27709 frames (42 s)
+14:19:13 [#####################.........]  70.6%  day 40/190  elapsed 44m06s, about 18m24s left
+14:19:34 train 41/165 jobo_20160622_000000.wav: 85 labels -> 528 rumble frames, 110 negative windows -> 12180 frames (22 s)
+14:19:34 [#####################.........]  70.9%  day 41/190  elapsed 44m27s, about 18m14s left
+14:19:44 train 42/165 jobo_20160623_000000.wav: 4 labels -> 17 rumble frames, 7 negative windows -> 843 frames (10 s)
+14:19:44 [#####################.........]  70.9%  day 42/190  elapsed 44m37s, about 18m17s left
+14:20:17 train 43/165 madj_20141223_000000.wav: 241 labels -> 887 rumble frames, 165 negative windows -> 15581 frames (33 s)
+14:20:17 [#####################.........]  71.7%  day 43/190  elapsed 45m10s, about 17m51s left
+14:21:05 train 44/165 madj_20141225_000000.wav: 380 labels -> 1967 rumble frames, 252 negative windows -> 25246 frames (47 s)
+14:21:05 [#####################.........]  72.8%  day 44/190  elapsed 45m58s, about 17m09s left
+14:21:37 train 45/165 madj_20141227_000000.wav: 222 labels -> 1150 rumble frames, 157 negative windows -> 16015 frames (32 s)
+14:21:37 [######################........]  73.5%  day 45/190  elapsed 46m30s, about 16m45s left
+14:22:38 train 46/165 madj_20141229_000000.wav: 649 labels -> 2986 rumble frames, 242 negative windows -> 23747 frames (61 s)
+14:22:38 [######################........]  75.1%  day 46/190  elapsed 47m31s, about 15m44s left
+14:23:49 train 47/165 madj_20150104_000000.wav: 506 labels -> 3042 rumble frames, 528 negative windows -> 55812 frames (71 s)
+14:23:49 [#######################.......]  77.0%  day 47/190  elapsed 48m42s, about 14m32s left
+14:25:22 train 48/165 madj_20150109_000000.wav: 976 labels -> 6210 rumble frames, 452 negative windows -> 42061 frames (93 s)
+14:25:22 [#######################.......]  79.6%  day 48/190  elapsed 50m15s, about 12m53s left
+14:25:58 train 49/165 madj_20150127_000000.wav: 201 labels -> 1299 rumble frames, 219 negative windows -> 23283 frames (35 s)
+14:25:58 [########################......]  80.4%  day 49/190  elapsed 50m51s, about 12m25s left
+14:26:20 train 50/165 madj_20150202_000000.wav: 94 labels -> 517 rumble frames, 108 negative windows -> 11596 frames (22 s)
+14:26:20 [########################......]  80.7%  day 50/190  elapsed 51m13s, about 12m13s left
+14:26:39 train 51/165 madj_20150206_000000.wav: 68 labels -> 355 rumble frames, 84 negative windows -> 9187 frames (19 s)
+14:26:39 [########################......]  81.0%  day 51/190  elapsed 51m32s, about 12m05s left
+14:27:54 train 52/165 madj_20150212_000000.wav: 626 labels -> 3685 rumble frames, 478 negative windows -> 46440 frames (75 s)
+14:27:54 [########################......]  83.0%  day 52/190  elapsed 52m47s, about 10m48s left
+14:28:04 train 53/165 madj_20151221_000000.wav: 4 labels -> 16 rumble frames, 2 negative windows -> 124 frames (10 s)
+14:28:04 [########################......]  83.0%  day 53/190  elapsed 52m57s, about 10m49s left
+14:28:34 train 54/165 madj_20151228_000000.wav: 181 labels -> 1012 rumble frames, 163 negative windows -> 17170 frames (30 s)
+14:28:34 [#########################.....]  83.6%  day 54/190  elapsed 53m27s, about 10m27s left
+14:28:57 train 55/165 madj_20160425_000000.wav: 92 labels -> 530 rumble frames, 129 negative windows -> 14502 frames (23 s)
+14:28:57 [#########################.....]  84.0%  day 55/190  elapsed 53m50s, about 10m13s left
+14:29:25 train 56/165 madj_20160427_000000.wav: 148 labels -> 763 rumble frames, 162 negative windows -> 18090 frames (28 s)
+14:29:25 [#########################.....]  84.6%  day 56/190  elapsed 54m18s, about 9m52s left
+14:29:46 train 57/165 nn01a_20180126_000000.wav: 9 labels -> 57 rumble frames, 9 negative windows -> 1031 frames (21 s)
+14:29:46 [#########################.....]  84.6%  day 57/190  elapsed 54m39s, about 9m54s left
+14:30:11 train 58/165 nn01a_20180305_000000.wav: 47 labels -> 397 rumble frames, 51 negative windows -> 5873 frames (25 s)
+14:30:11 [#########################.....]  84.8%  day 58/190  elapsed 55m04s, about 9m51s left
+14:30:31 train 59/165 nn01a_20180324_000000.wav: 3 labels -> 24 rumble frames, 7 negative windows -> 843 frames (20 s)
+14:30:31 [#########################.....]  84.8%  day 59/190  elapsed 55m24s, about 9m53s left
+14:30:52 train 60/165 nn01a_20180619_000000.wav: 9 labels -> 59 rumble frames, 23 negative windows -> 2889 frames (21 s)
+14:30:52 [#########################.....]  84.9%  day 60/190  elapsed 55m45s, about 9m54s left
+14:31:13 train 61/165 nn01a_20180706_000000.wav: 8 labels -> 32 rumble frames, 7 negative windows -> 531 frames (21 s)
+14:31:13 [#########################.....]  84.9%  day 61/190  elapsed 56m06s, about 9m57s left
+14:31:33 train 62/165 nn01b_20180220_000000.wav: 4 labels -> 28 rumble frames, 8 negative windows -> 875 frames (20 s)
+14:31:33 [#########################.....]  85.0%  day 62/190  elapsed 56m26s, about 9m59s left
+14:31:54 train 63/165 nn01b_20180309_000000.wav: 13 labels -> 70 rumble frames, 7 negative windows -> 664 frames (21 s)
+14:31:54 [#########################.....]  85.0%  day 63/190  elapsed 56m47s, about 10m01s left
+14:32:16 train 64/165 nn01b_20180510_000000.wav: 16 labels -> 89 rumble frames, 26 negative windows -> 2955 frames (22 s)
+14:32:16 [#########################.....]  85.1%  day 64/190  elapsed 57m09s, about 10m01s left
+14:32:44 train 65/165 nn01b_20180702_000000.wav: 60 labels -> 342 rumble frames, 73 negative windows -> 7346 frames (28 s)
+14:32:44 [#########################.....]  85.3%  day 65/190  elapsed 57m37s, about 9m54s left
+14:33:04 train 66/165 nn01c_20180302_000000.wav: 4 labels -> 28 rumble frames, 6 negative windows -> 656 frames (20 s)
+14:33:04 [#########################.....]  85.3%  day 66/190  elapsed 57m57s, about 9m57s left
+14:33:25 train 67/165 nn01c_20180311_000000.wav: 10 labels -> 44 rumble frames, 5 negative windows -> 592 frames (21 s)
+14:33:25 [#########################.....]  85.4%  day 67/190  elapsed 58m18s, about 9m59s left
+14:33:49 train 68/165 nn01c_20180402_000000.wav: 46 labels -> 282 rumble frames, 18 negative windows -> 1777 frames (23 s)
+14:33:49 [#########################.....]  85.5%  day 68/190  elapsed 58m42s, about 9m57s left
+14:34:11 train 69/165 nn01c_20180417_000000.wav: 14 labels -> 104 rumble frames, 22 negative windows -> 2268 frames (22 s)
+14:34:11 [#########################.....]  85.6%  day 69/190  elapsed 59m04s, about 9m58s left
+14:34:32 train 70/165 nn01c_20180425_000000.wav: 10 labels -> 76 rumble frames, 10 negative windows -> 984 frames (21 s)
+14:34:32 [#########################.....]  85.6%  day 70/190  elapsed 59m25s, about 10m00s left
+14:34:54 train 71/165 nn01c_20180501_000000.wav: 24 labels -> 165 rumble frames, 19 negative windows -> 2009 frames (22 s)
+14:34:54 [#########################.....]  85.7%  day 71/190  elapsed 59m47s, about 10m00s left
+14:35:18 train 72/165 nn01c_20180524_000000.wav: 22 labels -> 139 rumble frames, 42 negative windows -> 5099 frames (24 s)
+14:35:18 [#########################.....]  85.8%  day 72/190  elapsed 1h00m, about 9m58s left
+14:35:41 train 73/165 nn01c_20180625_000000.wav: 18 labels -> 112 rumble frames, 27 negative windows -> 3051 frames (23 s)
+14:35:41 [#########################.....]  85.9%  day 73/190  elapsed 1h00m, about 9m57s left
+14:36:01 train 74/165 nn01d_20180222_000000.wav: 2 labels -> 16 rumble frames, 4 negative windows -> 468 frames (20 s)
+14:36:01 [#########################.....]  85.9%  day 74/190  elapsed 1h00m, about 10m00s left
+14:36:22 train 75/165 nn01d_20180611_000000.wav: 19 labels -> 106 rumble frames, 13 negative windows -> 1269 frames (21 s)
+14:36:22 [#########################.....]  85.9%  day 75/190  elapsed 1h01m, about 10m01s left
+14:36:44 train 76/165 nn01d_20180730_000000.wav: 29 labels -> 149 rumble frames, 16 negative windows -> 1309 frames (22 s)
+14:36:44 [#########################.....]  86.0%  day 76/190  elapsed 1h01m, about 10m00s left
+14:37:09 train 77/165 nn01e_20180620_100134.wav: 47 labels -> 237 rumble frames, 41 negative windows -> 4572 frames (25 s)
+14:37:09 [#########################.....]  86.2%  day 77/190  elapsed 1h02m, about 9m56s left
+14:37:32 train 78/165 nn01e_20180828_100134.wav: 32 labels -> 259 rumble frames, 35 negative windows -> 4049 frames (23 s)
+14:37:32 [#########################.....]  86.3%  day 78/190  elapsed 1h02m, about 9m53s left
+14:37:59 train 79/165 nn01f_20180709_000000.wav: 47 labels -> 248 rumble frames, 65 negative windows -> 7234 frames (27 s)
+14:37:59 [#########################.....]  86.5%  day 79/190  elapsed 1h02m, about 9m47s left
+14:38:23 train 80/165 nn01f_20180728_000000.wav: 33 labels -> 234 rumble frames, 45 negative windows -> 5243 frames (24 s)
+14:38:23 [#########################.....]  86.7%  day 80/190  elapsed 1h03m, about 9m44s left
+14:38:44 train 81/165 nn01g_20180702_000000.wav: 15 labels -> 89 rumble frames, 24 negative windows -> 2827 frames (21 s)
+14:38:44 [##########################....]  86.7%  day 81/190  elapsed 1h03m, about 9m43s left
+14:39:06 train 82/165 nn01g_20180808_000000.wav: 18 labels -> 127 rumble frames, 36 negative windows -> 4067 frames (23 s)
+14:39:06 [##########################....]  86.8%  day 82/190  elapsed 1h03m, about 9m42s left
+14:39:26 train 83/165 nn02a_20180504_000000.wav: 10 labels -> 49 rumble frames, 18 negative windows -> 1940 frames (20 s)
+14:39:26 [##########################....]  86.9%  day 83/190  elapsed 1h04m, about 9m42s left
+14:39:48 train 84/165 nn02a_20180517_000000.wav: 18 labels -> 103 rumble frames, 23 negative windows -> 2503 frames (22 s)
+14:39:48 [##########################....]  87.0%  day 84/190  elapsed 1h04m, about 9m41s left
+14:40:11 train 85/165 nn02b_20180508_000000.wav: 30 labels -> 101 rumble frames, 27 negative windows -> 3437 frames (23 s)
+14:40:11 [##########################....]  87.1%  day 85/190  elapsed 1h05m, about 9m39s left
+14:40:32 train 86/165 nn02b_20180510_000000.wav: 6 labels -> 25 rumble frames, 7 negative windows -> 843 frames (20 s)
+14:40:32 [##########################....]  87.1%  day 86/190  elapsed 1h05m, about 9m41s left
+14:40:57 train 87/165 nn02c_20180818_000000.wav: 59 labels -> 354 rumble frames, 32 negative windows -> 3049 frames (25 s)
+14:40:57 [##########################....]  87.3%  day 87/190  elapsed 1h05m, about 9m36s left
+14:41:21 train 88/165 nn02d_20180522_000000.wav: 35 labels -> 224 rumble frames, 41 negative windows -> 4599 frames (24 s)
+14:41:21 [##########################....]  87.4%  day 88/190  elapsed 1h06m, about 9m33s left
+14:41:46 train 89/165 nn02d_20180608_000000.wav: 55 labels -> 221 rumble frames, 46 negative windows -> 4701 frames (25 s)
+14:41:46 [##########################....]  87.6%  day 89/190  elapsed 1h06m, about 9m26s left
+14:42:10 train 90/165 nn02f_20180803_000000.wav: 40 labels -> 242 rumble frames, 35 negative windows -> 3731 frames (24 s)
+14:42:10 [##########################....]  87.7%  day 90/190  elapsed 1h07m, about 9m23s left
+14:42:33 train 91/165 nn02f_20180817_000000.wav: 30 labels -> 163 rumble frames, 11 negative windows -> 845 frames (23 s)
+14:42:33 [##########################....]  87.8%  day 91/190  elapsed 1h07m, about 9m22s left
+14:42:57 train 92/165 nn02g_20180816_000000.wav: 24 labels -> 158 rumble frames, 45 negative windows -> 5283 frames (24 s)
+14:42:57 [##########################....]  87.9%  day 92/190  elapsed 1h07m, about 9m18s left
+14:43:22 train 93/165 nn02g_20180821_000000.wav: 26 labels -> 133 rumble frames, 53 negative windows -> 6283 frames (25 s)
+14:43:22 [##########################....]  88.1%  day 93/190  elapsed 1h08m, about 9m14s left
+14:43:53 train 94/165 nn03a_20180817_000000.wav: 83 labels -> 559 rumble frames, 90 negative windows -> 10127 frames (31 s)
+14:43:53 [##########################....]  88.4%  day 94/190  elapsed 1h08m, about 9m02s left
+14:44:15 train 95/165 nn03b_20180923_000000.wav: 13 labels -> 108 rumble frames, 12 negative windows -> 1389 frames (22 s)
+14:44:15 [##########################....]  88.4%  day 95/190  elapsed 1h09m, about 9m02s left
+14:44:37 train 96/165 nn03b_20180928_000000.wav: 6 labels -> 52 rumble frames, 14 negative windows -> 1778 frames (22 s)
+14:44:37 [##########################....]  88.5%  day 96/190  elapsed 1h09m, about 9m03s left
+14:44:59 train 97/165 nn03d_20180817_000000.wav: 20 labels -> 102 rumble frames, 30 negative windows -> 3379 frames (22 s)
+14:44:59 [##########################....]  88.6%  day 97/190  elapsed 1h09m, about 9m01s left
+14:45:21 train 98/165 nn03d_20180916_000000.wav: 11 labels -> 73 rumble frames, 24 negative windows -> 2764 frames (22 s)
+14:45:21 [##########################....]  88.6%  day 98/190  elapsed 1h10m, about 9m00s left
+14:45:44 train 99/165 nn03e_20180911_000000.wav: 32 labels -> 252 rumble frames, 31 negative windows -> 3097 frames (23 s)
+14:45:44 [##########################....]  88.7%  day 99/190  elapsed 1h10m, about 8m57s left
+14:46:06 train 100/165 nn03f_20180803_000000.wav: 18 labels -> 115 rumble frames, 16 negative windows -> 1878 frames (22 s)
+14:46:06 [##########################....]  88.8%  day 100/190  elapsed 1h10m, about 8m56s left
+14:46:29 train 101/165 nn03f_20180806_000000.wav: 20 labels -> 159 rumble frames, 14 negative windows -> 1441 frames (22 s)
+14:46:29 [##########################....]  88.9%  day 101/190  elapsed 1h11m, about 8m56s left
+14:46:51 train 102/165 nn03g_20180806_000000.wav: 24 labels -> 143 rumble frames, 23 negative windows -> 2427 frames (23 s)
+14:46:51 [##########################....]  89.0%  day 102/190  elapsed 1h11m, about 8m54s left
+14:47:18 train 103/165 nn03g_20180810_000000.wav: 60 labels -> 227 rumble frames, 56 negative windows -> 5435 frames (27 s)
+14:47:18 [##########################....]  89.2%  day 103/190  elapsed 1h12m, about 8m46s left
+14:47:43 train 104/165 nn04a_20180608_000000.wav: 48 labels -> 219 rumble frames, 41 negative windows -> 4259 frames (25 s)
+14:47:43 [##########################....]  89.3%  day 104/190  elapsed 1h12m, about 8m40s left
+14:48:07 train 105/165 nn04c_20180308_000000.wav: 24 labels -> 202 rumble frames, 47 negative windows -> 5552 frames (24 s)
+14:48:07 [##########################....]  89.5%  day 105/190  elapsed 1h13m, about 8m35s left
+14:48:28 train 106/165 nn04c_20180415_000000.wav: 2 labels -> 11 rumble frames, 4 negative windows -> 468 frames (21 s)
+14:48:28 [##########################....]  89.5%  day 106/190  elapsed 1h13m, about 8m37s left
+14:48:49 train 107/165 nn04c_20180516_000000.wav: 5 labels -> 39 rumble frames, 13 negative windows -> 1593 frames (21 s)
+14:48:49 [##########################....]  89.5%  day 107/190  elapsed 1h13m, about 8m38s left
+14:49:11 train 108/165 nn04c_20180714_000000.wav: 7 labels -> 66 rumble frames, 15 negative windows -> 1643 frames (21 s)
+14:49:11 [##########################....]  89.6%  day 108/190  elapsed 1h14m, about 8m38s left
+14:49:31 train 109/165 nn04c_20180826_000000.wav: 2 labels -> 10 rumble frames, 3 negative windows -> 281 frames (21 s)
+14:49:31 [##########################....]  89.6%  day 109/190  elapsed 1h14m, about 8m40s left
+14:49:53 train 110/165 nn04c_20181017_000000.wav: 5 labels -> 36 rumble frames, 5 negative windows -> 560 frames (21 s)
+14:49:53 [##########################....]  89.6%  day 110/190  elapsed 1h14m, about 8m41s left
+14:50:14 train 111/165 nn04d_20180717_000000.wav: 4 labels -> 31 rumble frames, 2 negative windows -> 144 frames (21 s)
+14:50:14 [##########################....]  89.6%  day 111/190  elapsed 1h15m, about 8m43s left
+14:50:36 train 112/165 nn05a_20180426_000000.wav: 9 labels -> 79 rumble frames, 16 negative windows -> 1737 frames (22 s)
+14:50:36 [##########################....]  89.6%  day 112/190  elapsed 1h15m, about 8m43s left
+14:50:59 train 113/165 nn05a_20180531_000000.wav: 18 labels -> 178 rumble frames, 35 negative windows -> 3967 frames (23 s)
+14:50:59 [##########################....]  89.7%  day 113/190  elapsed 1h15m, about 8m40s left
+14:51:19 train 114/165 nn05a_20180606_000000.wav: 2 labels -> 11 rumble frames, 3 negative windows -> 281 frames (20 s)
+14:51:19 [##########################....]  89.8%  day 114/190  elapsed 1h16m, about 8m41s left
+14:51:40 train 115/165 nn05a_20181110_000000.wav: 8 labels -> 66 rumble frames, 11 negative windows -> 1248 frames (21 s)
+14:51:40 [##########################....]  89.8%  day 115/190  elapsed 1h16m, about 8m42s left
+14:52:02 train 116/165 nn05a_20181217_000000.wav: 12 labels -> 60 rumble frames, 22 negative windows -> 2583 frames (22 s)
+14:52:02 [##########################....]  89.9%  day 116/190  elapsed 1h16m, about 8m41s left
+14:52:26 train 117/165 nn05a_20190102_000000.wav: 36 labels -> 189 rumble frames, 41 negative windows -> 4855 frames (24 s)
+14:52:26 [##########################....]  90.0%  day 117/190  elapsed 1h17m, about 8m35s left
+14:52:50 train 118/165 nn05a_20190218_000000.wav: 22 labels -> 139 rumble frames, 35 negative windows -> 4176 frames (24 s)
+14:52:50 [###########################...]  90.1%  day 118/190  elapsed 1h17m, about 8m32s left
+14:53:19 train 119/165 nn05b_20180309_000000.wav: 66 labels -> 459 rumble frames, 81 negative windows -> 9324 frames (29 s)
+14:53:19 [###########################...]  90.4%  day 119/190  elapsed 1h18m, about 8m20s left
+14:53:41 train 120/165 nn05b_20180414_000000.wav: 12 labels -> 75 rumble frames, 20 negative windows -> 2217 frames (22 s)
+14:53:41 [###########################...]  90.4%  day 120/190  elapsed 1h18m, about 8m19s left
+14:54:04 train 121/165 nn05b_20180522_000000.wav: 19 labels -> 130 rumble frames, 35 negative windows -> 4151 frames (23 s)
+14:54:04 [###########################...]  90.5%  day 121/190  elapsed 1h18m, about 8m15s left
+14:54:26 train 122/165 nn05b_20180617_000000.wav: 14 labels -> 107 rumble frames, 11 negative windows -> 1009 frames (22 s)
+14:54:26 [###########################...]  90.6%  day 122/190  elapsed 1h19m, about 8m15s left
+14:54:47 train 123/165 nn05b_20190209_000000.wav: 14 labels -> 73 rumble frames, 20 negative windows -> 2381 frames (21 s)
+14:54:47 [###########################...]  90.6%  day 123/190  elapsed 1h19m, about 8m13s left
+14:55:08 train 124/165 nn05d_20180518_000000.wav: 7 labels -> 44 rumble frames, 14 negative windows -> 1651 frames (21 s)
+14:55:08 [###########################...]  90.7%  day 124/190  elapsed 1h20m, about 8m13s left
+14:55:28 train 125/165 nn05d_20180603_000000.wav: 5 labels -> 40 rumble frames, 2 negative windows -> 148 frames (20 s)
+14:55:28 [###########################...]  90.7%  day 125/190  elapsed 1h20m, about 8m14s left
+14:55:50 train 126/165 nn05d_20180702_000000.wav: 15 labels -> 93 rumble frames, 34 negative windows -> 4032 frames (23 s)
+14:55:50 [###########################...]  90.8%  day 126/190  elapsed 1h20m, about 8m11s left
+14:56:11 train 127/165 nn05d_20181022_000000.wav: 2 labels -> 5 rumble frames, 4 negative windows -> 468 frames (20 s)
+14:56:11 [###########################...]  90.8%  day 127/190  elapsed 1h21m, about 8m13s left
+14:56:34 train 128/165 nn05d_20181118_000000.wav: 27 labels -> 194 rumble frames, 33 negative windows -> 3588 frames (23 s)
+14:56:34 [###########################...]  90.9%  day 128/190  elapsed 1h21m, about 8m08s left
+14:56:54 train 129/165 nn05e_20180504_000000.wav: 2 labels -> 16 rumble frames, 4 negative windows -> 468 frames (20 s)
+14:56:54 [###########################...]  90.9%  day 129/190  elapsed 1h21m, about 8m10s left
+14:57:15 train 130/165 nn05e_20181021_000000.wav: 5 labels -> 28 rumble frames, 10 negative windows -> 1181 frames (21 s)
+14:57:15 [###########################...]  90.9%  day 130/190  elapsed 1h22m, about 8m10s left
+14:57:37 train 131/165 nn06a_20180512_000000.wav: 28 labels -> 109 rumble frames, 10 negative windows -> 859 frames (22 s)
+14:57:37 [###########################...]  91.0%  day 131/190  elapsed 1h22m, about 8m08s left
+14:58:04 train 132/165 nn06a_20180615_000000.wav: 60 labels -> 321 rumble frames, 53 negative windows -> 5580 frames (27 s)
+14:58:04 [###########################...]  91.2%  day 132/190  elapsed 1h22m, about 7m58s left
+14:58:39 train 133/165 nn06a_20180716_000000.wav: 164 labels -> 1011 rumble frames, 101 negative windows -> 9008 frames (35 s)
+14:58:39 [###########################...]  91.7%  day 133/190  elapsed 1h23m, about 7m33s left
+14:59:05 train 134/165 nn06a_20180721_000000.wav: 42 labels -> 183 rumble frames, 41 negative windows -> 4928 frames (26 s)
+14:59:05 [###########################...]  91.9%  day 134/190  elapsed 1h23m, about 7m26s left
+14:59:33 train 135/165 nn06a_20181009_000000.wav: 68 labels -> 363 rumble frames, 61 negative windows -> 5622 frames (28 s)
+14:59:33 [###########################...]  92.1%  day 135/190  elapsed 1h24m, about 7m14s left
+14:59:59 train 136/165 nn06a_20181101_000000.wav: 42 labels -> 312 rumble frames, 39 negative windows -> 3867 frames (26 s)
+14:59:59 [###########################...]  92.2%  day 136/190  elapsed 1h24m, about 7m08s left
+15:00:26 train 137/165 nn06a_20181220_020245.wav: 61 labels -> 302 rumble frames, 59 negative windows -> 5725 frames (27 s)
+15:00:26 [###########################...]  92.5%  day 137/190  elapsed 1h25m, about 6m57s left
+15:00:46 train 138/165 nn06a_20190128_020245.wav: 9 labels -> 51 rumble frames, 15 negative windows -> 1777 frames (20 s)
+15:00:46 [###########################...]  92.5%  day 138/190  elapsed 1h25m, about 6m56s left
+15:01:06 train 139/165 nn06a_20190216_020245.wav: 8 labels -> 51 rumble frames, 7 negative windows -> 551 frames (20 s)
+15:01:06 [###########################...]  92.5%  day 139/190  elapsed 1h25m, about 6m55s left
+15:01:32 train 140/165 nn06b_20180411_000000.wav: 46 labels -> 236 rumble frames, 45 negative windows -> 4815 frames (25 s)
+15:01:32 [###########################...]  92.7%  day 140/190  elapsed 1h26m, about 6m47s left
+15:01:55 train 141/165 nn06b_20180511_000000.wav: 26 labels -> 193 rumble frames, 35 negative windows -> 4054 frames (24 s)
+15:01:55 [###########################...]  92.8%  day 141/190  elapsed 1h26m, about 6m43s left
+15:02:19 train 142/165 nn06b_20180612_000000.wav: 18 labels -> 139 rumble frames, 47 negative windows -> 5719 frames (24 s)
+15:02:19 [###########################...]  92.9%  day 142/190  elapsed 1h27m, about 6m37s left
+15:02:47 train 143/165 nn06b_20180906_000000.wav: 55 labels -> 361 rumble frames, 73 negative windows -> 8180 frames (28 s)
+15:02:47 [###########################...]  93.2%  day 143/190  elapsed 1h27m, about 6m25s left
+15:03:12 train 144/165 nn06b_20180911_000000.wav: 29 labels -> 189 rumble frames, 25 negative windows -> 2876 frames (24 s)
+15:03:12 [###########################...]  93.3%  day 144/190  elapsed 1h28m, about 6m21s left
+15:03:38 train 145/165 nn06b_20181121_000000.wav: 41 labels -> 283 rumble frames, 59 negative windows -> 6380 frames (26 s)
+15:03:38 [############################..]  93.5%  day 145/190  elapsed 1h28m, about 6m11s left
+15:03:59 train 146/165 nn06b_20190119_000000.wav: 12 labels -> 95 rumble frames, 14 negative windows -> 1250 frames (22 s)
+15:03:59 [############################..]  93.5%  day 146/190  elapsed 1h28m, about 6m10s left
+15:04:25 train 147/165 nn06b_20190206_000000.wav: 34 labels -> 225 rumble frames, 44 negative windows -> 4229 frames (25 s)
+15:04:25 [############################..]  93.6%  day 147/190  elapsed 1h29m, about 6m03s left
+15:04:50 train 148/165 nn06c_20180528_000000.wav: 36 labels -> 219 rumble frames, 45 negative windows -> 4566 frames (25 s)
+15:04:50 [############################..]  93.8%  day 148/190  elapsed 1h29m, about 5m56s left
+15:05:12 train 149/165 nn06c_20180730_000000.wav: 28 labels -> 145 rumble frames, 15 negative windows -> 1517 frames (23 s)
+15:05:12 [############################..]  93.9%  day 149/190  elapsed 1h30m, about 5m52s left
+15:05:34 train 150/165 nn06e_20180512_000000.wav: 4 labels -> 28 rumble frames, 8 negative windows -> 844 frames (21 s)
+15:05:34 [############################..]  93.9%  day 150/190  elapsed 1h30m, about 5m52s left
+15:05:56 train 151/165 nn06e_20181115_000000.wav: 7 labels -> 45 rumble frames, 10 negative windows -> 896 frames (22 s)
+15:05:56 [############################..]  93.9%  day 151/190  elapsed 1h30m, about 5m52s left
+15:06:17 train 152/165 nn06f_20180806_000000.wav: 13 labels -> 72 rumble frames, 17 negative windows -> 2005 frames (22 s)
+15:06:17 [############################..]  94.0%  day 152/190  elapsed 1h31m, about 5m49s left
+15:06:40 train 153/165 nn07b_20180828_000000.wav: 18 labels -> 110 rumble frames, 27 negative windows -> 2852 frames (23 s)
+15:06:40 [############################..]  94.1%  day 153/190  elapsed 1h31m, about 5m46s left
+15:07:05 train 154/165 nn07b_20180923_000000.wav: 34 labels -> 238 rumble frames, 53 negative windows -> 5811 frames (25 s)
+15:07:05 [############################..]  94.2%  day 154/190  elapsed 1h31m, about 5m37s left
+15:07:28 train 155/165 nn07c_20180619_000000.wav: 19 labels -> 161 rumble frames, 16 negative windows -> 1204 frames (23 s)
+15:07:28 [############################..]  94.3%  day 155/190  elapsed 1h32m, about 5m35s left
+15:07:49 train 156/165 nn08a_20180829_000000.wav: 8 labels -> 56 rumble frames, 10 negative windows -> 1118 frames (21 s)
+15:07:49 [############################..]  94.3%  day 156/190  elapsed 1h32m, about 5m34s left
+15:08:12 train 157/165 nn08a_20181015_000000.wav: 15 labels -> 68 rumble frames, 19 negative windows -> 1899 frames (23 s)
+15:08:12 [############################..]  94.4%  day 157/190  elapsed 1h33m, about 5m31s left
+15:08:42 train 158/165 nn08b_20180817_000000.wav: 99 labels -> 447 rumble frames, 63 negative windows -> 5983 frames (30 s)
+15:08:42 [############################..]  94.7%  day 158/190  elapsed 1h33m, about 5m14s left
+15:09:29 train 159/165 nn08c_20180824_000000.wav: 235 labels -> 1271 rumble frames, 206 negative windows -> 22778 frames (47 s)
+15:09:29 [############################..]  95.5%  day 159/190  elapsed 1h34m, about 4m27s left
+15:10:00 train 160/165 nn08c_20180902_000000.wav: 71 labels -> 432 rumble frames, 117 negative windows -> 14030 frames (31 s)
+15:10:00 [############################..]  95.8%  day 160/190  elapsed 1h34m, about 4m07s left
+15:10:22 train 161/165 nn09b_20180928_000000.wav: 8 labels -> 61 rumble frames, 16 negative windows -> 1796 frames (22 s)
+15:10:22 [############################..]  95.9%  day 161/190  elapsed 1h35m, about 4m05s left
+15:10:50 train 162/165 nn10a_20180702_000000.wav: 115 labels -> 636 rumble frames, 32 negative windows -> 3167 frames (28 s)
+15:10:50 [############################..]  96.1%  day 162/190  elapsed 1h35m, about 3m50s left
+15:11:15 train 163/165 nn10a_20180913_000000.wav: 43 labels -> 204 rumble frames, 33 negative windows -> 3508 frames (25 s)
+15:11:15 [############################..]  96.3%  day 163/190  elapsed 1h36m, about 3m42s left
+15:11:39 train 164/165 nn10b_20180604_000000.wav: 48 labels -> 211 rumble frames, 17 negative windows -> 1385 frames (24 s)
+15:11:39 [############################..]  96.4%  day 164/190  elapsed 1h36m, about 3m35s left
+15:12:03 train 165/165 nn10b_20180728_000000.wav: 28 labels -> 153 rumble frames, 28 negative windows -> 3303 frames (24 s)
+15:12:03 [############################..]  96.5%  day 165/190  elapsed 1h36m, about 3m30s left
+15:12:25 test 1/25 nn01c_20180111_000000.wav: 15 labels -> 114 rumble frames, 14 negative windows -> 1099 frames (23 s)
+15:12:25 [############################..]  96.6%  day 166/190  elapsed 1h37m, about 3m27s left
+15:12:49 test 2/25 nn02b_20200120_000000.wav: 18 labels -> 116 rumble frames, 33 negative windows -> 3831 frames (24 s)
+15:12:49 [############################..]  96.7%  day 167/190  elapsed 1h37m, about 3m22s left
+15:13:16 test 3/25 nn02d_20180112_000000.wav: 41 labels -> 303 rumble frames, 39 negative windows -> 3848 frames (27 s)
+15:13:16 [#############################.]  96.8%  day 168/190  elapsed 1h38m, about 3m14s left
+15:13:40 test 4/25 nn02d_20181022_000000.wav: 25 labels -> 222 rumble frames, 47 negative windows -> 5463 frames (25 s)
+15:13:40 [#############################.]  96.9%  day 169/190  elapsed 1h38m, about 3m06s left
+15:14:05 test 5/25 nn02d_20201013_000100.wav: 21 labels -> 202 rumble frames, 43 negative windows -> 4908 frames (25 s)
+15:14:05 [#############################.]  97.1%  day 170/190  elapsed 1h38m, about 3m00s left
+15:14:31 test 6/25 nn03c_20180114_000000.wav: 27 labels -> 265 rumble frames, 67 negative windows -> 7868 frames (26 s)
+15:14:31 [#############################.]  97.2%  day 171/190  elapsed 1h39m, about 2m50s left
+15:14:56 test 7/25 nn03e_20181015_000000.wav: 39 labels -> 297 rumble frames, 49 negative windows -> 5486 frames (25 s)
+15:14:56 [#############################.]  97.4%  day 172/190  elapsed 1h39m, about 2m40s left
+15:15:21 test 8/25 nn04a_20180608_000000.wav: 48 labels -> 219 rumble frames, 41 negative windows -> 4259 frames (25 s)
+15:15:21 [#############################.]  97.6%  day 173/190  elapsed 1h40m, about 2m30s left
+15:15:43 test 9/25 nn04a_20180710_000000.wav: 11 labels -> 76 rumble frames, 13 negative windows -> 1272 frames (21 s)
+15:15:43 [#############################.]  97.6%  day 174/190  elapsed 1h40m, about 2m28s left
+15:16:03 test 10/25 nn04a_20181021_000000.wav: 3 labels -> 16 rumble frames, 5 negative windows -> 622 frames (21 s)
+15:16:03 [#############################.]  97.6%  day 175/190  elapsed 1h40m, about 2m27s left
+15:16:28 test 11/25 nn04a_20191102_000000.wav: 42 labels -> 234 rumble frames, 37 negative windows -> 4248 frames (25 s)
+15:16:28 [#############################.]  97.8%  day 176/190  elapsed 1h41m, about 2m19s left
+15:16:49 test 12/25 nn04a_20200104_000000.wav: 5 labels -> 35 rumble frames, 8 negative windows -> 859 frames (21 s)
+15:16:49 [#############################.]  97.8%  day 177/190  elapsed 1h41m, about 2m18s left
+15:17:11 test 13/25 nn04a_20200314_000000.wav: 12 labels -> 80 rumble frames, 9 negative windows -> 854 frames (21 s)
+15:17:11 [#############################.]  97.8%  day 178/190  elapsed 1h42m, about 2m16s left
+15:17:32 test 14/25 nn05c_20201027_000100.wav: 7 labels -> 40 rumble frames, 15 negative windows -> 1781 frames (22 s)
+15:17:32 [#############################.]  97.9%  day 179/190  elapsed 1h42m, about 2m13s left
+15:18:04 test 15/25 nn06a_20191008_000000.wav: 152 labels -> 1004 rumble frames, 70 negative windows -> 5632 frames (31 s)
+15:18:04 [#############################.]  98.3%  day 180/190  elapsed 1h42m, about 1m48s left
+15:18:28 test 16/25 nn06b_20180126_000000.wav: 34 labels -> 203 rumble frames, 40 negative windows -> 4339 frames (25 s)
+15:18:28 [#############################.]  98.4%  day 181/190  elapsed 1h43m, about 1m40s left
+15:19:09 test 17/25 nn06b_20201005_000100.wav: 178 labels -> 1188 rumble frames, 164 negative windows -> 17021 frames (40 s)
+15:19:09 [#############################.]  99.0%  day 182/190  elapsed 1h44m, about 1m01s left
+15:19:30 test 18/25 nn06b_20201030_000100.wav: 16 labels -> 90 rumble frames, 20 negative windows -> 2249 frames (22 s)
+15:19:30 [#############################.]  99.1%  day 183/190  elapsed 1h44m, about 0m57s left
+15:19:50 test 19/25 nn06b_20210131_000100.wav: 6 labels -> 51 rumble frames, 14 negative windows -> 1624 frames (20 s)
+15:19:50 [#############################.]  99.1%  day 184/190  elapsed 1h44m, about 0m54s left
+15:20:12 test 20/25 nn06d_20200118_000000.wav: 30 labels -> 290 rumble frames, 23 negative windows -> 2636 frames (22 s)
+15:20:12 [#############################.]  99.2%  day 185/190  elapsed 1h45m, about 0m48s left
+15:20:34 test 21/25 nn07b_20191022_000000.wav: 23 labels -> 199 rumble frames, 29 negative windows -> 3438 frames (22 s)
+15:20:34 [#############################.]  99.3%  day 186/190  elapsed 1h45m, about 0m42s left
+15:20:58 test 22/25 nn07c_20180110_000000.wav: 65 labels -> 462 rumble frames, 39 negative windows -> 3831 frames (25 s)
+15:20:58 [#############################.]  99.5%  day 187/190  elapsed 1h45m, about 0m30s left
+15:21:27 test 23/25 nn08c_20200104_000000.wav: 97 labels -> 589 rumble frames, 76 negative windows -> 7939 frames (28 s)
+15:21:27 [#############################.]  99.8%  day 188/190  elapsed 1h46m, about 0m10s left
+15:21:50 test 24/25 nn08c_20201005_000100.wav: 23 labels -> 165 rumble frames, 38 negative windows -> 4012 frames (23 s)
+15:21:50 [#############################.]  99.9%  day 189/190  elapsed 1h46m, about 0m03s left
+15:22:10 test 25/25 nn10a_20191006_000000.wav: 20 labels -> 150 rumble frames, 8 negative windows -> 571 frames (20 s)
+15:22:10 [##############################] 100.0%  day 190/190  elapsed 1h47m, about 0m00s left
+15:22:10 done

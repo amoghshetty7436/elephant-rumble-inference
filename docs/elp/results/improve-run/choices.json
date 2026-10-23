@@ -1,0 +1,182 @@
+{
+ "rules": {
+  "experiment": "ctx0_noise1_rand200_neg1_hard0",
+  "rule": {
+   "on": 0.25,
+   "min_frames": 6,
+   "smooth": 5,
+   "gap": 2,
+   "score": "mean"
+  },
+  "why": "stage 1 (alarm rules): picked on > 0.25, at least 6 frames, smoothing 5, join gaps of 2, score = mean on ctx0_noise1_rand200_neg1_hard0; 0.297 false alarms/h at 80% recall (FruitPunch's rule: 0.498 false alarms/h at 80% recall)",
+  "target_recall": 0.8,
+  "seeds": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ],
+  "time": "2026-10-20 17:03"
+ },
+ "2a": {
+  "winner": "ctx0_noise1_rand200_neg1_hard0",
+  "ranked": [
+   "ctx0_noise1_rand200_neg1_hard0",
+   "ctx0_noise2_rand200_neg1_hard0",
+   "ctx0_noise3_rand200_neg1_hard0",
+   "ctx0_noise10_rand200_neg1_hard0",
+   "ctx0_noise5_rand200_neg1_hard0",
+   "ctx0_noise20_rand200_neg1_hard0"
+  ],
+  "why": "stage 2a (noise clips used): picked ctx0_noise1_rand200_neg1_hard0 (0.64 s window, noise x1, 200 random frames/day, 1:1 negatives, 0 hard-negative rounds)",
+  "rule": {
+   "on": 0.25,
+   "min_frames": 6,
+   "smooth": 5,
+   "gap": 2,
+   "score": "mean"
+  },
+  "time": "2026-10-20 19:51"
+ },
+ "2b": {
+  "winner": "ctx0_noise1_rand1000_neg1_hard0",
+  "ranked": [
+   "ctx0_noise1_rand1000_neg1_hard0",
+   "ctx0_noise1_rand500_neg1_hard0",
+   "ctx0_noise1_rand2000_neg1_hard0",
+   "ctx0_noise1_rand200_neg1_hard0",
+   "ctx0_noise1_rand0_neg1_hard0"
+  ],
+  "why": "stage 2b (random forest frames per day): picked ctx0_noise1_rand1000_neg1_hard0 (0.64 s window, noise x1, 1000 random frames/day, 1:1 negatives, 0 hard-negative rounds)",
+  "rule": {
+   "on": 0.25,
+   "min_frames": 6,
+   "smooth": 5,
+   "gap": 2,
+   "score": "mean"
+  },
+  "time": "2026-10-20 22:03"
+ },
+ "2c": {
+  "winner": "ctx0_noise1_rand1000_neg1_hard0",
+  "ranked": [
+   "ctx0_noise1_rand1000_neg1_hard0",
+   "ctx0_noise1_rand1000_neg2_hard0",
+   "ctx0_noise1_rand1000_neg3_hard0",
+   "ctx0_noise1_rand1000_neg5_hard0"
+  ],
+  "why": "stage 2c (negatives per rumble): picked ctx0_noise1_rand1000_neg1_hard0 (0.64 s window, noise x1, 1000 random frames/day, 1:1 negatives, 0 hard-negative rounds)",
+  "rule": {
+   "on": 0.25,
+   "min_frames": 6,
+   "smooth": 5,
+   "gap": 2,
+   "score": "mean"
+  },
+  "time": "2026-10-20 23:43"
+ },
+ "3": {
+  "winner": "ctx1_noise1_rand1000_neg1_hard0",
+  "ranked": [
+   "ctx6_noise1_rand1000_neg1_hard0",
+   "ctx1_noise1_rand1000_neg1_hard0",
+   "ctx7_noise1_rand1000_neg1_hard0",
+   "ctx4_noise1_rand1000_neg1_hard0",
+   "ctx0_noise1_rand1000_neg1_hard0",
+   "ctx9_noise1_rand1000_neg1_hard0",
+   "ctx5_noise1_rand1000_neg1_hard0",
+   "ctx8_noise1_rand1000_neg1_hard0",
+   "ctx2_noise1_rand1000_neg1_hard0",
+   "ctx3_noise1_rand1000_neg1_hard0"
+  ],
+  "why": "stage 3 (listening window): picked ctx1_noise1_rand1000_neg1_hard0 (1.92 s window, noise x1, 1000 random frames/day, 1:1 negatives, 0 hard-negative rounds); ctx6_noise1_rand1000_neg1_hard0 scored lower but within the run-to-run spread, so the simpler one is kept",
+  "rule": {
+   "on": 0.25,
+   "min_frames": 6,
+   "smooth": 5,
+   "gap": 2,
+   "score": "mean"
+  },
+  "time": "2026-10-21 04:43"
+ },
+ "combos": {
+  "winner": "ctx1_noise1_rand1000_neg1_hard0",
+  "ranked": [
+   "ctx6_noise1_rand1000_neg1_hard0",
+   "ctx1_noise1_rand1000_neg1_hard0",
+   "ctx1_noise2_rand1000_neg1_hard0",
+   "ctx6_noise2_rand1000_neg2_hard0",
+   "ctx1_noise2_rand1000_neg2_hard0",
+   "ctx6_noise1_rand500_neg1_hard0",
+   "ctx1_noise1_rand1000_neg2_hard0",
+   "ctx6_noise1_rand1000_neg2_hard0",
+   "ctx6_noise2_rand1000_neg1_hard0",
+   "ctx1_noise2_rand500_neg1_hard0",
+   "ctx1_noise1_rand500_neg1_hard0",
+   "ctx1_noise1_rand500_neg2_hard0",
+   "ctx6_noise2_rand500_neg1_hard0",
+   "ctx1_noise2_rand500_neg2_hard0",
+   "ctx6_noise1_rand500_neg2_hard0",
+   "ctx6_noise2_rand500_neg2_hard0"
+  ],
+  "why": "stage 4 (combinations): picked ctx1_noise1_rand1000_neg1_hard0 (1.92 s window, noise x1, 1000 random frames/day, 1:1 negatives, 0 hard-negative rounds); ctx6_noise1_rand1000_neg1_hard0 scored lower but within the run-to-run spread, so the simpler one is kept",
+  "rule": {
+   "on": 0.25,
+   "min_frames": 6,
+   "smooth": 5,
+   "gap": 2,
+   "score": "mean"
+  },
+  "time": "2026-10-21 12:30"
+ },
+ "mistakes": {
+  "winner": "ctx1_noise1_rand1000_neg1_hard0",
+  "ranked": [
+   "ctx1_noise1_rand1000_neg1_hard3",
+   "ctx1_noise1_rand1000_neg1_hard0",
+   "ctx1_noise1_rand1000_neg1_hard2",
+   "ctx1_noise1_rand1000_neg1_hard1"
+  ],
+  "why": "stage 5 (hard negatives): picked ctx1_noise1_rand1000_neg1_hard0 (1.92 s window, noise x1, 1000 random frames/day, 1:1 negatives, 0 hard-negative rounds); ctx1_noise1_rand1000_neg1_hard3 scored lower but within the run-to-run spread, so the simpler one is kept",
+  "rule": {
+   "on": 0.25,
+   "min_frames": 6,
+   "smooth": 5,
+   "gap": 2,
+   "score": "mean"
+  },
+  "time": "2026-10-21 14:27"
+ },
+ "rules_final": {
+  "experiment": "ctx1_noise1_rand1000_neg1_hard0",
+  "rule": {
+   "on": 0.2,
+   "min_frames": 8,
+   "smooth": 5,
+   "gap": 2,
+   "score": "mean"
+  },
+  "why": "stage 6 (alarm rules for the final model): picked on > 0.2, at least 8 frames, smoothing 5, join gaps of 2, score = mean on ctx1_noise1_rand1000_neg1_hard0; 0.191 false alarms/h at 80% recall (FruitPunch's rule: 0.245 false alarms/h at 80% recall)",
+  "target_recall": 0.8,
+  "seeds": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ],
+  "time": "2026-10-21 14:38"
+ },
+ "final": {
+  "winner": "ctx1_noise1_rand1000_neg1_hard0",
+  "rule": {
+   "on": 0.2,
+   "min_frames": 8,
+   "smooth": 5,
+   "gap": 2,
+   "score": "mean"
+  },
+  "time": "2026-10-21 14:40"
+ }
+}
