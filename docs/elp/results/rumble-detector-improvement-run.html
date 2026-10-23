@@ -1,0 +1,787 @@
+<title>Rumble Detector Improvement Run</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column that walks the run in order (detector, data, yardstick, part 1, the 8 stages, tests, time); wide tables scroll in their own boxes. */
+:root {
+  --bg: #f2f4f1; --surface: #ffffff; --sunk: #e7ebe6; --fg: #17201b; --muted: #56635b; --line: #d3dad4;
+  --accent: #23614a; --accent-soft: #d9e9df; --win: #b7741a; --win-soft: #f5e5c8;
+  --bad: #a6443a; --bad-soft: #f3dcd8; --bar: #6f9a85; --bar-muted: #bcc7c0; --whisker: #2f3a34;
+  --display: "Familjen Grotesk", "Segoe UI", system-ui, sans-serif;
+  --body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111714; --surface: #18201c; --sunk: #1f2924; --fg: #e3eae5; --muted: #98a69e; --line: #2c3731;
+  --accent: #7ac2a0; --accent-soft: #20352b; --win: #e6a650; --win-soft: #3a2b15;
+  --bad: #e5857a; --bad-soft: #3c2320; --bar: #4f7e68; --bar-muted: #3a4640; --whisker: #c9d3cd; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #111714; --surface: #18201c; --sunk: #1f2924; --fg: #e3eae5; --muted: #98a69e; --line: #2c3731;
+  --accent: #7ac2a0; --accent-soft: #20352b; --win: #e6a650; --win-soft: #3a2b15;
+  --bad: #e5857a; --bad-soft: #3c2320; --bar: #4f7e68; --bar-muted: #3a4640; --whisker: #c9d3cd; color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.6; }
+.wrap { max-width: 900px; margin: 0 auto; padding-block: 40px 72px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 56px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+h1 { font-size: clamp(32px, 5.4vw, 48px); font-weight: 700; letter-spacing: -0.015em; }
+h2 { font-size: 27px; font-weight: 700; }
+h3 { font-size: 19px; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+ul, ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; max-width: 68ch; }
+a { color: var(--accent); }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.11em; color: var(--muted); font-weight: 600; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 0.92em; }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+section { display: flex; flex-direction: column; gap: 18px; }
+.part { font-family: var(--mono); font-size: 13px; color: var(--accent); letter-spacing: 0.04em; }
+
+/* hero */
+.hero { display: flex; flex-direction: column; gap: 16px; }
+.lede { font-size: 18px; max-width: 64ch; }
+.answer { background: var(--win-soft); border-radius: 12px; padding: 20px 22px; display: flex; flex-direction: column; gap: 10px; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stat .big { font-family: var(--display); font-weight: 700; font-size: 30px; color: var(--accent); line-height: 1.1; }
+.stat .big small { font-size: 16px; color: var(--muted); font-weight: 500; }
+.stat span:last-child { font-size: 14px; color: var(--muted); }
+@media (max-width: 720px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* contents */
+.toc { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 24px; padding: 0; list-style: none; font-size: 15px; max-width: none; }
+.toc a { text-decoration: none; color: var(--fg); display: flex; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+.toc a span { color: var(--muted); font-family: var(--mono); font-size: 13px; min-width: 24px; padding-top: 2px; }
+@media (max-width: 640px) { .toc { grid-template-columns: 1fr; } }
+
+/* pipeline */
+.flow { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; align-items: stretch; }
+.node { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 4px; position: relative; min-width: 0; }
+.node b { font-family: var(--display); font-weight: 600; font-size: 15.5px; }
+.node span { font-size: 13.5px; color: var(--muted); line-height: 1.45; }
+.node .tag { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); }
+.node.trained { border-color: var(--accent); background: var(--accent-soft); }
+.node:not(:last-child)::after { content: "→"; position: absolute; right: -9px; top: 50%; transform: translate(50%, -50%); color: var(--muted); font-size: 14px; z-index: 1; }
+@media (max-width: 760px) { .flow { grid-template-columns: 1fr; } .node:not(:last-child)::after { content: "↓"; right: 50%; top: auto; bottom: -9px; transform: translate(50%, 50%); } }
+
+/* cards and tables */
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.terms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; }
+.term { border-top: 2px solid var(--accent); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.term b { font-weight: 600; }
+.term span { font-size: 15px; }
+@media (max-width: 640px) { .terms { grid-template-columns: 1fr; } }
+.tablebox { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tbody tr:last-child td { border-bottom: none; }
+th { font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+td.r, th.r { text-align: right; white-space: nowrap; }
+tr.win td { background: var(--win-soft); }
+tr.dim td { color: var(--muted); }
+.wide { min-width: 680px; }
+.role { display: inline-block; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 8px; border-radius: 99px; white-space: nowrap; }
+.role.train { background: var(--accent-soft); color: var(--accent); }
+.role.practice { background: var(--win-soft); color: var(--win); }
+.role.test { background: var(--sunk); color: var(--fg); }
+.up { color: var(--accent); font-weight: 600; }
+.down { color: var(--bad); font-weight: 600; }
+
+/* yardstick illustration and charts */
+.chart { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 14px 8px; overflow-x: auto; }
+.chart svg { display: block; width: 100%; min-width: 560px; height: auto; }
+.chart svg text { font-family: var(--body); fill: var(--fg); font-size: 13px; }
+.chart svg .lab { fill: var(--muted); font-size: 12px; }
+.chart svg .val { font-family: var(--mono); font-size: 12px; }
+.chart svg .strong { font-weight: 700; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13.5px; color: var(--muted); padding: 2px 4px 8px; }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+.legend i.w { width: 14px; height: 2px; border-radius: 0; vertical-align: 4px; background: var(--whisker); }
+
+/* stage overview */
+.ladder { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0; max-width: none; }
+.ladder li { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+.ladder .st { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.ladder .q { display: flex; flex-direction: column; gap: 2px; }
+.ladder .q b { font-weight: 600; }
+.ladder .q span { font-size: 14px; color: var(--muted); }
+.ladder .res { font-family: var(--mono); font-size: 13.5px; text-align: right; white-space: nowrap; }
+.chip { display: inline-block; font-family: var(--body); font-size: 12px; font-weight: 600; padding: 1px 9px; border-radius: 99px; margin-left: 6px; }
+.chip.kept { background: var(--accent-soft); color: var(--accent); }
+.chip.same { background: var(--sunk); color: var(--muted); }
+@media (max-width: 640px) { .ladder li { grid-template-columns: 52px minmax(0, 1fr); } .ladder .res { grid-column: 2; text-align: left; } }
+
+/* stage cards */
+.stage { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px 22px 18px; display: flex; flex-direction: column; gap: 14px; }
+.stage header { display: flex; flex-direction: column; gap: 6px; }
+.stage .meta { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13.5px; color: var(--muted); }
+.stage .meta b { color: var(--fg); font-weight: 600; }
+.stage .chart { border: none; padding: 0; background: transparent; }
+.verdict { background: var(--accent-soft); border-radius: 10px; padding: 12px 14px; font-size: 15px; display: flex; flex-direction: column; gap: 4px; }
+.verdict.same { background: var(--sunk); }
+.verdict b { font-weight: 600; }
+.qa { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 6px 16px; font-size: 15px; }
+.qa dt { font-weight: 600; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; padding-top: 2px; }
+.qa dd { margin: 0; }
+@media (max-width: 640px) { .qa { grid-template-columns: 1fr; gap: 2px; } .qa dd { margin-bottom: 8px; } }
+
+/* timeline */
+.gantt { display: flex; flex-direction: column; gap: 6px; }
+.grow { display: grid; grid-template-columns: 190px minmax(0, 1fr) 82px; gap: 10px; align-items: center; font-size: 14px; }
+.grow .track { position: relative; height: 18px; background: var(--sunk); border-radius: 4px; }
+.grow .seg { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: var(--accent); }
+.grow .seg.light { background: var(--bar); }
+.grow .seg.final { background: var(--win); }
+.grow .t { font-family: var(--mono); font-size: 13px; text-align: right; }
+.gaxis { display: grid; grid-template-columns: 190px minmax(0, 1fr) 82px; gap: 10px; font-size: 12px; color: var(--muted); }
+.gaxis div:nth-child(2) { display: flex; justify-content: space-between; font-family: var(--mono); }
+@media (max-width: 640px) { .grow, .gaxis { grid-template-columns: 120px minmax(0, 1fr) 64px; font-size: 13px; } }
+
+.lessons { list-style: none; padding: 0; counter-reset: l; gap: 16px; max-width: none; }
+.lessons li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 12px; }
+.lessons li::before { counter-increment: l; content: counter(l); font-family: var(--display); font-weight: 700; color: var(--accent); font-size: 20px; line-height: 1.3; }
+.lessons div { display: flex; flex-direction: column; gap: 4px; }
+.next { background: var(--accent-soft); border-radius: 12px; padding: 18px 22px; display: flex; flex-direction: column; gap: 10px; }
+
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+summary { cursor: pointer; padding: 14px 18px; font-weight: 600; }
+details .inner { padding: 0 6px 12px; overflow-x: auto; }
+.full { font-size: 13px; min-width: 900px; }
+.full th, .full td { padding: 6px 8px; white-space: nowrap; }
+footer { overflow-wrap: anywhere; font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">Elephant Listening Project · forest elephant rumble detector · 16–21 October 2026</div>
+  <h1>How we made the rumble detector find more elephants</h1>
+  <p class="lede">We took the rumble detector that FruitPunch AI built for ELP and tried to make it miss fewer forest elephant calls without drowning reviewers in false alarms. This page explains the whole process from the start: how the detector works, what data it learns from, how we judged each version, every option we tried, what won, and how long it all took.</p>
+  <div class="answer">
+    <p><strong>Result:</strong> on recordings it had never heard, the final detector finds about 5 more rumbles in every 100 than our previous best version (E2). It raises the same number of false alarms or fewer, and it runs just as fast.</p>
+    <p class="small">It scans a 24-hour recording in about 31 seconds on the lab PC (about 1.3 s per hour of audio). The biggest gains came from two changes: a smarter rule for turning the detector's scores into alarms, and showing it more ordinary forest background as "not a rumble". Several other ideas were tested carefully and did not help.</p>
+  </div>
+  <div class="stats">
+    <div class="stat"><span class="big num">0.91</span><span>of rumbles found on Test 1 (was 0.86)</span></div>
+    <div class="stat"><span class="big num">0.78</span><span>of rumbles found on Test 2 (was 0.73)</span></div>
+    <div class="stat"><span class="big num">−62%</span><span>false alarms at 80% recall on practice days, against the start of the run</span></div>
+    <div class="stat"><span class="big num">24<small> h</small></span><span>on one lab PC for 39 versions, each trained 5 times</span></div>
+  </div>
+</header>
+
+<nav aria-label="Contents">
+  <ul class="toc">
+    <li><a href="#detector"><span>1</span>How the detector works</a></li>
+    <li><a href="#data"><span>2</span>The recordings</a></li>
+    <li><a href="#judge"><span>3</span>How we judged each version</a></li>
+    <li><a href="#part1"><span>4</span>Part 1: which recordings to train on</a></li>
+    <li><a href="#part2"><span>5</span>Part 2: improving it one step at a time</a></li>
+    <li><a href="#tests"><span>6</span>Results on the untouched tests</a></li>
+    <li><a href="#time"><span>7</span>Time and computing cost</a></li>
+    <li><a href="#learned"><span>8</span>What we learned and what's next</a></li>
+  </ul>
+</nav>
+
+<section id="detector">
+  <div class="part">1 · Background</div>
+  <h2>How the detector works</h2>
+  <p>Forest elephants call to each other with low rumbles, mostly below 100 Hz. ELP records the forest around the clock, and the detector's job is to point people at the moments in those 24-hour recordings that contain a rumble. It works in five steps:</p>
+  <div class="flow">
+    <div class="node"><span class="tag">Input</span><b>24 h of audio</b><span>One recorder, one day, as a sound file.</span></div>
+    <div class="node"><span class="tag">Step 1</span><b>Cut into frames</b><span>0.64 s slices, about 134,500 per day.</span></div>
+    <div class="node"><span class="tag">Step 2 · fixed</span><b>AVES fingerprint</b><span>A pre-trained animal-sound model turns each frame into 768 numbers. We never change it.</span></div>
+    <div class="node trained"><span class="tag">Step 3 · trained</span><b>Small classifier</b><span>Reads the fingerprints and gives each frame a rumble probability from 0 to 1.</span></div>
+    <div class="node trained"><span class="tag">Step 4 · tuned</span><b>Alarm rule</b><span>Joins high-probability frames into alarms and gives each a score.</span></div>
+    <div class="node"><span class="tag">Output</span><b>Raven table</b><span>One box per alarm, ready for a person to check.</span></div>
+  </div>
+  <p>Only the highlighted steps change in this work. The classifier is small, so retraining it takes minutes. That is what made it possible to try dozens of versions in one day. The AVES fingerprints are computed once and stored on disk.</p>
+</section>
+
+<section id="data">
+  <div class="part">2 · Background</div>
+  <h2>The recordings</h2>
+  <p>Every recording was labelled by people at ELP, who drew a box around each rumble they heard. We split the recordings into three groups, and each group has one job. A version never sees its practice or test days during training.</p>
+  <div class="tablebox">
+  <table class="wide">
+    <thead><tr><th>Recordings</th><th>Job</th><th class="r">Days</th><th class="r">Rumbles</th><th>What they are</th></tr></thead>
+    <tbody>
+      <tr><td>Clearing (bai) recordings</td><td><span class="role train">Train</span></td><td class="r num">56</td><td class="r num">31,129</td><td>Open forest clearings where elephants gather. Most of the training rumbles come from here.</td></tr>
+      <tr><td>Forest recordings</td><td><span class="role train">Train</span></td><td class="r num">130</td><td class="r num">3,200</td><td>Recorders under the forest canopy, where the detector will mostly be used.</td></tr>
+      <tr><td>Noise clips</td><td><span class="role train">Train</span></td><td class="r num">254 clips</td><td class="r num">0</td><td>Short clips of thunder, rain, wind, engines, voices, wings and silence, used as "not a rumble".</td></tr>
+      <tr><td>RumbleComplex + RumbleGeneral</td><td><span class="role practice">Practice</span></td><td class="r num">58</td><td class="r num">1,113</td><td>Forest days used to compare versions and pick the cut-off. Every choice in this page was made here.</td></tr>
+      <tr><td>Test 1 · Sample B</td><td><span class="role test">Test</span></td><td class="r num">80</td><td class="r num">1,577</td><td>Forest days from 2023. Scored once, at the very end.</td></tr>
+      <tr><td>Test 2 · Sample A</td><td><span class="role test">Test</span></td><td class="r num">54</td><td class="r num">967</td><td>Fully reviewed forest days. Scored once, at the very end.</td></tr>
+      <tr><td>Vehicle days</td><td><span class="role test">Test</span></td><td class="r num">3</td><td class="r num">0</td><td>Days with engine noise and no elephants. Any alarm here is a false alarm.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small muted">Keeping the tests apart until the end matters. If we had peeked at them while choosing, the final scores would be flattering and would not predict how the detector does on new recordings.</p>
+</section>
+
+<section id="judge">
+  <div class="part">3 · Method</div>
+  <h2>How we judged each version</h2>
+  <div class="terms">
+    <div class="term"><b>Recall</b><span>Of all the real rumbles, the share the detector found. 0.80 means it found 80 of every 100. For a species this threatened, this is the number we care about most.</span></div>
+    <div class="term"><b>Precision</b><span>Of all the alarms it raised, the share that were real rumbles. 0.65 means 65 of every 100 alarms were real.</span></div>
+    <div class="term"><b>False alarms per hour</b><span>How often it raises an alarm when no elephant called. This is the extra checking work a person has to do.</span></div>
+    <div class="term"><b>Cut-off</b><span>Each alarm has a score. Alarms below the cut-off are dropped. A lower cut-off finds more rumbles but also raises more false alarms.</span></div>
+  </div>
+
+  <div class="box">
+    <h3>The yardstick: false alarms per hour at 80% recall</h3>
+    <p>Comparing two versions at the same cut-off is unfair, because one might be "stricter" than the other. So for every version we lower the cut-off until it finds 80% of the practice-day rumbles, then count how many false alarms per hour it raises at that point. <b>The version with fewer false alarms wins.</b> This puts recall first, as the study needs, and is how detectors are usually compared in the literature when missing calls is the bigger cost.</p>
+    <div class="chart" style="border:none;padding:0">
+      <svg id="yard" viewBox="0 0 760 270" role="img" aria-label="Illustration: two versions shown as curves of recall against false alarms per hour, read at 80 percent recall"></svg>
+    </div>
+    <p class="small muted">Each dot is one cut-off. The vertical axis is recall, not the cut-off: to move up from 80% to 90% recall the cut-off has to be lowered, which lets more false alarms through, so the line moves right. Real measurements from this run: the model after step 1 (E2's data with only the new alarm rule) and the final model. Both reach 80%, but the final model gets there with fewer false alarms, and the gap grows at higher recall. We chose 80% because most earlier versions could not reach 90% at all.</p>
+  </div>
+
+  <div class="box">
+    <h3>The same idea in counts</h3>
+    <p>The practice days hold about 1,392 hours of audio and 1,113 real rumbles. The cut-off is the setting we choose: an alarm is kept only if its score is above it. Recall is the result we get. A strict (high) cut-off keeps only confident alarms, so it misses faint rumbles and recall is lower. A looser (lower) cut-off catches more rumbles but lets in more false alarms. So for each recall we ask for, we find the cut-off that gives it and count the false alarms.</p>
+    <div class="tablebox" style="border:none">
+    <table>
+      <thead><tr><th>Final model, recall we ask for</th><th class="r">Real rumbles caught</th><th class="r">False alarms let through</th><th class="r">Per hour</th></tr></thead>
+      <tbody>
+        <tr><td>80% recall (strictest cut-off of the three)</td><td class="r num">~890</td><td class="r num">~266</td><td class="r num">0.19</td></tr>
+        <tr><td>85% recall</td><td class="r num">~946</td><td class="r num">~395</td><td class="r num">0.28</td></tr>
+        <tr><td>90% recall (loosest cut-off)</td><td class="r num">~1,002</td><td class="r num">~611</td><td class="r num">0.44</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="tablebox" style="border:none">
+    <table>
+      <thead><tr><th>Two models at the same 80%</th><th class="r">False alarms needed to catch ~890 rumbles</th></tr></thead>
+      <tbody>
+        <tr><td>After step 1 (only the alarm rule changed)</td><td class="r num">~413 (0.30 an hour)</td></tr>
+        <tr class="win"><td>Final model</td><td class="r num">~266 (0.19 an hour)</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>Both catch the same rumbles, but the final model pays about 150 fewer false alarms for them. That is the yardstick: <b>the fewer false alarms a model needs to reach 80%, the better.</b> On the graph above, each table becomes one line, and the line further to the left is the better model.</p>
+    <p><b>80% is for comparing, not a limit on use.</b> We compared models at 80% because most early versions could not reach 90%. The winner is also best at 85% and 90%. In practice the detector can run at about 90% recall, at roughly 11 false alarms per recorder-day to review instead of about 5. Its ceiling is about 91%: some rumbles are too faint or masked for it to hear at any cut-off.</p>
+  </div>
+
+  <div class="terms">
+    <div class="term"><b>Every version trained 5 times</b><span>Training involves chance: the starting weights and the order of examples are random. So each version was trained 5 times and we report the average. Each run trains for a fixed 5 minutes (FruitPunch's method), not a fixed number of epochs, so bigger or slower training sets get fewer passes: 60–64 epochs for the 0.64 s versions, 30–35 for wider windows, and only 14–23 with 2 to 5 negatives per rumble. The range across the 5 runs (shown as a line on the charts) shows how much a score moves by luck alone.</span></div>
+    <div class="term"><b>The tie rule</b><span>If two options differ by less than the run-to-run spread, the difference may be luck. In that case we keep the simpler, cheaper option, such as a shorter listening window or fewer extra rounds. This stops us adding complexity that doesn't clearly pay.</span></div>
+  </div>
+</section>
+
+<section id="part1">
+  <div class="part">4 · Part 1, 16–20 October</div>
+  <h2>Which recordings should the detector learn from?</h2>
+  <p>Before improving the detector, we needed the right starting mix of training data. We trained 8 versions (A to H), each on a different mix, and later a ninth (E2). This round used FruitPunch's original alarm rule and trained each version once.</p>
+  <div class="tablebox">
+  <table class="wide" style="min-width:980px">
+    <thead>
+      <tr><th rowspan="2">Setup</th><th rowspan="2">Trained on</th><th class="r" rowspan="2">Cut-off</th><th class="r" rowspan="2">Practice F1</th><th colspan="4" style="text-align:center">Test 1 · Sample B</th><th colspan="4" style="text-align:center">Test 2 · Sample A</th><th class="r" rowspan="2">Vehicle FA/h</th><th class="r" rowspan="2">FruitPunch clip F1</th></tr>
+      <tr><th class="r">Prec.</th><th class="r">Recall</th><th class="r">F1</th><th class="r">FA/h</th><th class="r">Prec.</th><th class="r">Recall</th><th class="r">F1</th><th class="r">FA/h</th></tr>
+    </thead>
+    <tbody>
+<tr><td><b>A</b></td><td>Clearing + forest (FruitPunch's mix)</td><td class="r num">0.90</td><td class="r num">0.503</td><td class="r num">0.591</td><td class="r num">0.849</td><td class="r num">0.697</td><td class="r num">0.21</td><td class="r num">0.721</td><td class="r num">0.700</td><td class="r num">0.710</td><td class="r num">0.17</td><td class="r num">0.93</td><td class="r num">0.963</td></tr>
+<tr><td><b>B</b></td><td>Forest only</td><td class="r num">0.95</td><td class="r num">0.321</td><td class="r num">0.197</td><td class="r num">0.904</td><td class="r num">0.323</td><td class="r num">1.33</td><td class="r num">0.298</td><td class="r num">0.775</td><td class="r num">0.430</td><td class="r num">1.16</td><td class="r num">6.82</td><td class="r num">0.962</td></tr>
+<tr><td><b>C</b></td><td>Clearing only</td><td class="r num">0.90</td><td class="r num">0.505</td><td class="r num">0.650</td><td class="r num">0.841</td><td class="r num">0.733</td><td class="r num">0.17</td><td class="r num">0.779</td><td class="r num">0.691</td><td class="r num">0.732</td><td class="r num">0.12</td><td class="r num">0.46</td><td class="r num">0.958</td></tr>
+<tr><td><b>D</b></td><td>Forest + 10 clearing days, half and half</td><td class="r num">0.95</td><td class="r num">0.389</td><td class="r num">0.397</td><td class="r num">0.839</td><td class="r num">0.539</td><td class="r num">0.44</td><td class="r num">0.531</td><td class="r num">0.678</td><td class="r num">0.596</td><td class="r num">0.37</td><td class="r num">2.31</td><td class="r num">0.963</td></tr>
+<tr><td><b>E</b></td><td>Clearing + noise clips</td><td class="r num">0.90</td><td class="r num">0.652</td><td class="r num">0.693</td><td class="r num">0.828</td><td class="r num">0.754</td><td class="r num">0.14</td><td class="r num">0.812</td><td class="r num">0.675</td><td class="r num">0.737</td><td class="r num">0.10</td><td class="r num">0.28</td><td class="r num">0.953</td></tr>
+<tr class="win"><td><b>E2</b></td><td>Clearing + forest + noise clips</td><td class="r num">0.90</td><td class="r num">0.679</td><td class="r num">0.652</td><td class="r num">0.859</td><td class="r num">0.741</td><td class="r num">0.16</td><td class="r num">0.762</td><td class="r num">0.725</td><td class="r num">0.743</td><td class="r num">0.14</td><td class="r num">0.79</td><td class="r num">0.964</td></tr>
+<tr><td><b>F</b></td><td>E + Complex + General</td><td class="r num">0.90</td><td class="r num">0.776*</td><td class="r num">0.562</td><td class="r num">0.826</td><td class="r num">0.669</td><td class="r num">0.23</td><td class="r num">0.704</td><td class="r num">0.698</td><td class="r num">0.701</td><td class="r num">0.18</td><td class="r num">0.67</td><td class="r num">0.961</td></tr>
+<tr><td><b>G</b></td><td>E + Sample A</td><td class="r num">0.90</td><td class="r num">0.656</td><td class="r num">0.666</td><td class="r num">0.864</td><td class="r num">0.752</td><td class="r num">0.15</td><td class="r num">–</td><td class="r num">–</td><td class="r num">–</td><td class="r num">–</td><td class="r num">0.60</td><td class="r num">0.964</td></tr>
+<tr><td><b>H</b></td><td>E + Complex + General + Sample A</td><td class="r num">0.90</td><td class="r num">0.782*</td><td class="r num">0.612</td><td class="r num">0.855</td><td class="r num">0.713</td><td class="r num">0.19</td><td class="r num">–</td><td class="r num">–</td><td class="r num">–</td><td class="r num">–</td><td class="r num">0.58</td><td class="r num">0.964</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small muted">Each setup trained once for 2 minutes with FruitPunch's alarm rule, at the cut-off with the best practice-day F1. FA/h = false alarms per hour. * F and H were scored on a different practice set (15 held-out forest days), so their practice F1 can't be compared. "–": Sample A was used to train G and H, so it can't test them. FruitPunch clip F1 is FruitPunch's own test on short balanced clips.</p>
+  <div class="box">
+    <h3>What I read from Part 1</h3>
+    <ul>
+      <li><b>Teaching it what noise sounds like helped most.</b> C to E only added the 254 noise clips, yet false alarms fell on every test and vehicle false alarms dropped from 0.46 to 0.28 an hour.</li>
+      <li><b>The forest data is too small to stand alone.</b> Forest only (B) found many rumbles (recall 0.90) but 4 of every 5 alarms were false, and it fired almost 7 times an hour on engines. With 9 times fewer rumbles than the clearing data, it cannot learn what is <i>not</i> a rumble.</li>
+      <li><b>Clearing data transfers well to the forest.</b> Clearing only (C) beat the forest-heavy D on every number, so the rumble itself sounds similar enough across habitats.</li>
+      <li><b>Forest data adds recall, at the price of false alarms.</b> When forest days were added to a setup (C to A, E to E2, E to G), recall on Test 1 rose by 0.01 to 0.04 and precision fell. That trade is why E2 suits a recall-first study.</li>
+      <li><b>FruitPunch's clip test can't rank detectors.</b> All 9 setups scored 0.95–0.96 on it, including B, the worst by far on whole days. Whole-day scoring is necessary.</li>
+      <li><b>The practice days were a good guide.</b> For A to E, the order on the practice days matched the order on both tests.</li>
+    </ul>
+  </div>
+  <p><b>Decision:</b> E and E2 tied on overall score (F1). E2 found 3 to 5 more rumbles in every 100 but raised more false alarms. Because missing elephants costs more than an extra alarm, we built Part 2 on <b>E2</b>, aiming to win back the false alarms without losing the recall.</p>
+</section>
+
+<section id="part2">
+  <div class="part">5 · Part 2, 20–21 October</div>
+  <h2>Improving E2 one step at a time</h2>
+  <p>We changed one thing at a time, in a fixed order, so we would know what each change did. Each step tried several options, kept the best one (or the simpler one if it was a tie), and passed it on to the next step. Step 4 then retested the top two options of each earlier step together, in case some only work in combination.</p>
+  <p>The whole run was a single command left running on the lab PC. It saved every result as it went, so it could resume after an interruption without redoing anything.</p>
+
+  <ol class="ladder" id="ladder"></ol>
+  <p class="small muted">Numbers are false alarms per hour at 80% recall on the practice days, averaged over 5 runs. Lower is better.</p>
+
+  <div class="chart">
+    <div class="legend"><span><i style="background:var(--bar-muted)"></i>Start of the run</span><span><i style="background:var(--accent)"></i>After a step that helped</span><span><i style="background:var(--win)"></i>Final</span><span><i class="w"></i>Range over 5 runs</span></div>
+    <svg id="progress" viewBox="0 0 760 250" role="img" aria-label="False alarms per hour after each step that helped"></svg>
+  </div>
+
+  <div id="stages" style="display:flex;flex-direction:column;gap:22px"></div>
+
+  <div class="box">
+    <h3>What I read from Part 2 as a whole</h3>
+    <ul>
+      <li><b>Where the alarms come from matters more than the classifier.</b> The two alarm-rule steps gave about two thirds of the total gain, for no training cost at all. FruitPunch's rule was throwing away faint rumbles before the classifier's skill could show.</li>
+      <li><b>The kind of negative examples matters more than how many.</b> Ordinary forest background was the most valuable. Simply adding more of anything (noise repeats, gap negatives, 2,000 random frames) made it worse every time. The balance of rumble and non-rumble examples looks close to right at 1:1.</li>
+      <li><b>The best versions sit in a tight band.</b> The top 11 versions all sit between 0.19 and 0.23 false alarms an hour, mostly within each other's luck range. The detector seems close to what this setup (frozen AVES fingerprints plus a small classifier) can do with this data. Bigger gains will probably need a new ingredient, such as more labelled forest days or a fingerprint model tuned to low-frequency calls.</li>
+      <li><b>Wider windows help at higher recall more than at 80%.</b> At 90% recall the 0.64 s model gives 0.53 false alarms an hour, against 0.42–0.46 for the 3.2 s to 9.6 s windows. If ELP later wants 90% recall, a longer window becomes more worth having.</li>
+      <li><b>Learning from its own mistakes was unstable.</b> One round of hard negatives had the widest luck range of any version (0.29–0.53). One possible cause is that some mined "false alarms" were faint rumbles nobody had labelled, which would teach the model to ignore real calls. It is not worth repeating in this form.</li>
+      <li><b>Run-to-run luck is about ±0.02 to ±0.05 false alarms an hour.</b> Any single-run comparison smaller than that, like several in Part 1, should be read as a tie.</li>
+    </ul>
+  </div>
+<details open>
+  <summary>All 39 versions trained in Part 2, best first</summary>
+  <div class="inner">
+    <table class="full">
+      <thead><tr><th>Version</th><th>Step</th><th class="r">Window s</th><th class="r">Noise ×</th><th class="r">Random/day</th><th class="r">Neg per rumble</th><th class="r">Extra rounds</th><th class="r">FA/h at 80%</th><th class="r">Range</th><th class="r">FA/h at 90%</th><th class="r">Max recall</th><th class="r">Best F1</th><th class="r">Total s per 24 h</th></tr></thead>
+      <tbody id="allrows"></tbody>
+    </table>
+    <p class="small muted" style="padding:10px 10px 0">FA/h = false alarms per hour on the practice days. Total s per 24 h = inference time for one day of audio: about 31 s of AVES plus the classifier, measured on the CPU. All rows use step 1's alarm rule, except the final model, which uses step 6's rule. Its step-1-rule score is 0.203.</p>
+  </div>
+</details>
+</section>
+
+<section id="tests">
+  <div class="part">6 · Results</div>
+  <h2>Results on the untouched tests</h2>
+  <p>Only after every choice was made did we score the test recordings, once. Each version used the cut-off that found 80% of rumbles on the practice days. The table follows the model through the steps that changed it.</p>
+  <div class="tablebox">
+  <table class="wide">
+    <thead>
+      <tr><th rowspan="2">After step</th><th class="r" rowspan="2">Practice false alarms/h</th><th colspan="3" style="text-align:center">Test 1 · Sample B</th><th colspan="3" style="text-align:center">Test 2 · Sample A</th><th class="r" rowspan="2">Vehicle false alarms/h</th></tr>
+      <tr><th class="r">Recall</th><th class="r">Precision</th><th class="r">False alarms/h</th><th class="r">Recall</th><th class="r">Precision</th><th class="r">False alarms/h</th></tr>
+    </thead>
+    <tbody>
+      <tr class="dim"><td>Start (E2 data, FruitPunch's rule)</td><td class="r num">0.498</td><td class="r num">0.890</td><td class="r num">0.529</td><td class="r num">0.30</td><td class="r num">0.762</td><td class="r num">0.683</td><td class="r num">0.23</td><td class="r num">1.33</td></tr>
+      <tr><td>1 · New alarm rule</td><td class="r num">0.297</td><td class="r num">0.897</td><td class="r num">0.582</td><td class="r num">0.21</td><td class="r num">0.760</td><td class="r num">0.712</td><td class="r num">0.18</td><td class="r num">0.81</td></tr>
+      <tr><td>2b · 1,000 random forest frames/day</td><td class="r num">0.214</td><td class="r num">0.914</td><td class="r num">0.640</td><td class="r num">0.16</td><td class="r num">0.767</td><td class="r num">0.781</td><td class="r num">0.12</td><td class="r num">0.74</td></tr>
+      <tr><td>3 · 1.92 s listening window</td><td class="r num">0.203</td><td class="r num">0.912</td><td class="r num">0.656</td><td class="r num">0.15</td><td class="r num">0.777</td><td class="r num">0.798</td><td class="r num">0.11</td><td class="r num">0.66</td></tr>
+      <tr class="win"><td><b>6 · Final rule (final model)</b></td><td class="r num">0.191</td><td class="r num">0.906</td><td class="r num">0.652</td><td class="r num">0.15</td><td class="r num">0.776</td><td class="r num">0.795</td><td class="r num">0.11</td><td class="r num">0.64</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small muted">Steps 2a, 2c, 4 and 5 kept the previous model, so they add no rows. From start to finish, precision on the tests rose from 0.53 to 0.65 and from 0.68 to 0.80, and vehicle false alarms halved, while recall held or rose.</p>
+
+  <div class="tablebox">
+  <table class="wide">
+    <thead><tr><th>Compared with Part 1's E2</th><th class="r">E2 (cut-off 0.90)</th><th class="r">Final model</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td>Test 1: recall / precision</td><td class="r num">0.86 / 0.65</td><td class="r num">0.91 / 0.65</td><td class="up">5 more rumbles per 100, same precision</td></tr>
+      <tr><td>Test 1: false alarms per hour</td><td class="r num">0.16</td><td class="r num">0.15</td><td class="muted">about the same</td></tr>
+      <tr><td>Test 2: recall / precision</td><td class="r num">0.73 / 0.76</td><td class="r num">0.78 / 0.80</td><td class="up">better on both</td></tr>
+      <tr><td>Test 2: false alarms per hour</td><td class="r num">0.14</td><td class="r num">0.11</td><td class="up">fewer</td></tr>
+      <tr><td>Vehicle false alarms per hour</td><td class="r num">0.79</td><td class="r num">0.64</td><td class="up">fewer</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small muted">The final model's detections are saved as Raven tables in <span class="num">_improve\final_detections\</span>, one per test set, so they can be checked by ear.</p>
+</section>
+
+<section id="time">
+  <div class="part">7 · Cost</div>
+  <h2>Time and computing cost</h2>
+  <p>The whole run took <b>24 hours 26 minutes</b> on one lab PC with an NVIDIA RTX 4060 graphics card. It started on Tuesday 20 October at 14:53 and finished on Wednesday at 15:19, with no errors.</p>
+  <div class="box">
+    <h3>Where the time went</h3>
+    <div class="gantt" id="gantt"></div>
+    <div class="gaxis"><div></div><div><span>Tue 15:00</span><span>21:00</span><span>Wed 03:00</span><span>09:00</span><span>15:00</span></div><div></div></div>
+  </div>
+  <div class="terms">
+    <div class="term"><b>One version: about 27 minutes</b><span>About 6 minutes to read its training examples from the stored fingerprints, then 5 training runs of 5 minutes each, then scoring on the 58 practice days. Steps that learn from the model's own mistakes took about 33–39 minutes, because they first search the training days for new false alarms.</span></div>
+    <div class="term"><b>Alarm rules: about 9 minutes for 1,960 rules</b><span>Trying alarm rules needs no retraining. The saved probabilities are re-scored under each rule, which is why steps 1 and 6 could test so many.</span></div>
+    <div class="term"><b>Fingerprints: about 1 hour 25 minutes, once</b><span>171 training days needed whole-day AVES fingerprints (about 23–34 s per day, 36 GB on disk). Every version after that reused them.</span></div>
+    <div class="term"><b>Final scoring: 39 minutes</b><span>Scoring the tests for the start, each step's winner and the final model, and writing the Raven tables.</span></div>
+  </div>
+
+  <div class="box">
+    <h3>Inference time: how long it takes to scan new recordings</h3>
+    <div class="stats">
+      <div class="stat"><span class="big num">1.3<small> s</small></span><span>per hour of audio</span></div>
+      <div class="stat"><span class="big num">31<small> s</small></span><span>per 24-hour day of audio</span></div>
+      <div class="stat"><span class="big num">3.6<small> min</small></span><span>per week from one recorder</span></div>
+      <div class="stat"><span class="big num">3.1<small> h</small></span><span>per year from one recorder</span></div>
+    </div>
+    <p class="small muted">Final model on the lab PC's RTX 4060 graphics card, with audio already on a local drive. Reading files over the network (the L: drive) can add more time than the detector itself.</p>
+    <h3>Inference time for each listening window</h3>
+    <p>You asked us to watch how a wider listening window affects speed. It turned out not to matter in practice. Turning audio into AVES fingerprints takes about <b>31 seconds per 24 hours of audio</b> for every version. The classifier on top adds less than a fifth of a second at any window. So a full year from one recorder takes about 3 hours, whichever window is used. A wider window mostly costs memory during training.</p>
+    <div class="tablebox" style="border:none">
+    <table class="wide">
+      <thead><tr><th class="r">Window (s)</th><th class="r">Classifier s per 24 h (CPU)</th><th class="r">Total s per hour of audio</th><th class="r">Total s per 24 h of audio</th><th class="r">Classifier size (parameters)</th><th class="r">Training memory</th><th class="r">Practice false alarms/h</th></tr></thead>
+      <tbody id="speedrows"></tbody>
+    </table>
+    </div>
+    <p class="small muted">The 0.64 s version uses FruitPunch's original classifier; the wider ones use a smaller head that looks at neighbouring frames, which is why 1.92 s has fewer parameters. GPU times were all under 0.2 s but too noisy to rank.</p>
+  </div>
+</section>
+
+<section id="learned">
+  <div class="part">8 · Takeaways</div>
+  <h2>What we learned</h2>
+  <ol class="lessons">
+    <li><div><h3>The alarm rule mattered as much as the training.</h3><p>FruitPunch's rule needs 4 frames above 0.5. Many real forest rumbles are fainter than that, so they could never be found. Letting longer stretches above 0.2 count, after light smoothing, cut false alarms by 40% and let the detector reach 91–95% of rumbles. It costs nothing at run time.</p></div></li>
+    <li><div><h3>Ordinary forest background is the most useful "not a rumble" example.</h3><p>Random moments from the forest days cut false alarms by another 28%. Leaving them out was the worst option of all 39 versions.</p></div></li>
+    <li><div><h3>More is not always better.</h3><p>Repeating the noise clips, adding more negatives per rumble, and doubling the random frames to 2,000 all made results worse. They seem to crowd out the real rumbles the detector learns from.</p></div></li>
+    <li><div><h3>Hearing more context helps only a little.</h3><p>A 1.92 s window was a small step up from 0.64 s. Windows up to 12 s did no better, and 8.32 s tied with 1.92 s, so the simpler one was kept.</p></div></li>
+    <li><div><h3>Learning from its own mistakes was not worth it here.</h3><p>One round made results clearly worse. Three rounds came back to a tie, at about four times the training cost.</p></div></li>
+    <li><div><h3>The practice days predicted the tests.</h3><p>Every step that clearly helped on the practice days also helped on both tests, and the small final rule change was neutral there. So the choices were not just fitted to the practice set.</p></div></li>
+  </ol>
+
+  <div class="box">
+    <h3>Limits to keep in mind</h3>
+    <ul>
+      <li>On Test 2 the detector found 78% of rumbles, just under the 80% it was tuned for. A cut-off set on one set of days usually lands a little lower on new ones, so set it with a small safety margin when using the detector.</li>
+      <li>Engine noise is still the main source of false alarms: about 0.64 an hour on the vehicle days.</li>
+      <li>Test 1 is dominated by one swamp day (nn08c_20230104), which holds about two thirds of its rumbles.</li>
+      <li>Training had a fixed 5-minute budget, so the versions with 2 to 5 negatives per rumble got only 14–23 epochs. They may have lost partly from being under-trained, so "more negatives hurts" is likely but not proven.</li>
+      <li>Each step was tuned with the earlier winners fixed. Step 4 rechecked the strongest combinations, but not every possible one.</li>
+    </ul>
+  </div>
+
+  <div class="next">
+    <h3>Next steps</h3>
+    <ol>
+      <li>Listen through the final model's Raven tables for a few test days, especially in mixed closed forest and on the vehicle days.</li>
+      <li>Use the final rule with a 2-frame minimum instead of 8 (on above 0.2, smoothing 5, join gaps of 2, average). It costs nothing at 80% recall and raises the most rumbles the detector can reach from 91% to 97%, which matters if ELP runs it at 90% recall.</li>
+      <li>Choose the cut-off for real use with a small safety margin, so recall stays at or above 80% on new sites.</li>
+      <li>Judge any bigger change, such as a different fingerprint model or more labelled forest days, with the same 80%-recall yardstick.</li>
+    </ol>
+  </div>
+</section>
+
+
+
+<details>
+  <summary>Words used on this page</summary>
+  <div class="inner" style="padding:0 18px 16px">
+    <div class="terms">
+      <div class="term"><b>Frame</b><span>A 0.64-second slice of audio. The detector scores each one.</span></div>
+      <div class="term"><b>AVES</b><span>A published model, pre-trained on many animal sounds, that turns a frame into a list of 768 numbers (its "fingerprint").</span></div>
+      <div class="term"><b>Negative</b><span>A training example labelled "not a rumble": a gap between rumbles, a noise clip, a random forest moment, or one of the model's own false alarms.</span></div>
+      <div class="term"><b>Listening window</b><span>How much audio the classifier hears when judging one frame: the frame plus its neighbours on each side.</span></div>
+      <div class="term"><b>Run / seed</b><span>One of the 5 trainings of a version. They share the same data but start from different random weights.</span></div>
+      <div class="term"><b>F1</b><span>One number that combines precision and recall. It is high only when both are high.</span></div>
+    </div>
+  </div>
+</details>
+
+<footer>
+  <span>Sources: <span class="num">improve.md</span>, <span class="num">improve.csv</span>, <span class="num">choices.json</span>, <span class="num">final.md</span> and <span class="num">run_log.txt</span> from <span class="num">L:\ELP\Detectors\Other\Amogh\Dataset\Configurations\_improve</span>, written by <span class="num">tools\improve.py</span>. Part 1 numbers from <span class="num">tools\dataset_configs.py</span>.</span>
+  <span>All choices were made on the 58 practice days. The test sets were scored once, after the final choice.</span>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  var NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, text) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function h(tag, attrs, html) {
+    var e = document.createElement(tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+
+  // name, step, window, noise, rand, neg, hard, fa80 mean, min, max, fa90, maxrecall, f1, cpu_s, params
+  var RAW = [
+    ["ctx1_noise1_rand1000_neg1_hard0","final",1.92,1,1000,1,0,0.191,0.178,0.210,0.439,0.914,0.751,0.041,86658],
+    ["ctx1_noise1_rand1000_neg1_hard3","5",1.92,1,1000,1,3,0.195,0.170,0.234,0.406,0.949,0.758,0.042,86658],
+    ["ctx6_noise1_rand1000_neg1_hard0","3",8.32,1,1000,1,0,0.198,0.188,0.216,0.419,0.944,0.748,0.072,209538],
+    ["ctx7_noise1_rand1000_neg1_hard0","3",9.6,1,1000,1,0,0.204,0.176,0.229,0.420,0.947,0.747,0.085,234114],
+    ["ctx4_noise1_rand1000_neg1_hard0","3",5.76,1,1000,1,0,0.212,0.191,0.222,0.437,0.949,0.746,0.064,160386],
+    ["ctx0_noise1_rand1000_neg1_hard0","2b",0.64,1,1000,1,0,0.214,0.207,0.224,0.534,0.931,0.748,0.057,148034],
+    ["ctx9_noise1_rand1000_neg1_hard0","3",12.16,1,1000,1,0,0.220,0.170,0.295,0.473,0.946,0.742,0.091,283266],
+    ["ctx5_noise1_rand1000_neg1_hard0","3",7.04,1,1000,1,0,0.223,0.208,0.252,0.444,0.952,0.738,0.077,184962],
+    ["ctx8_noise1_rand1000_neg1_hard0","3",10.88,1,1000,1,0,0.223,0.207,0.238,0.442,0.949,0.735,0.102,258690],
+    ["ctx1_noise2_rand1000_neg1_hard0","4",1.92,2,1000,1,0,0.224,0.205,0.249,0.465,0.953,0.745,0.041,86658],
+    ["ctx2_noise1_rand1000_neg1_hard0","3",3.2,1,1000,1,0,0.227,0.185,0.263,0.457,0.954,0.745,0.048,111234],
+    ["ctx1_noise1_rand1000_neg1_hard2","5",1.92,1,1000,1,2,0.235,0.193,0.280,0.484,0.953,0.743,0.041,86658],
+    ["ctx6_noise2_rand1000_neg2_hard0","4",8.32,2,1000,2,0,0.235,0.178,0.301,0.472,0.942,0.734,0.069,209538],
+    ["ctx3_noise1_rand1000_neg1_hard0","3",4.48,1,1000,1,0,0.235,0.207,0.260,0.447,0.956,0.738,0.056,135810],
+    ["ctx1_noise2_rand1000_neg2_hard0","4",1.92,2,1000,2,0,0.237,0.210,0.275,0.514,0.952,0.743,0.040,86658],
+    ["ctx6_noise1_rand500_neg1_hard0","4",8.32,1,500,1,0,0.239,0.181,0.280,0.505,0.942,0.735,0.072,209538],
+    ["ctx1_noise1_rand1000_neg2_hard0","4",1.92,1,1000,2,0,0.245,0.222,0.260,0.530,0.949,0.734,0.043,86658],
+    ["ctx6_noise1_rand1000_neg2_hard0","4",8.32,1,1000,2,0,0.248,0.214,0.290,0.502,0.943,0.726,0.070,209538],
+    ["ctx6_noise2_rand1000_neg1_hard0","4",8.32,2,1000,1,0,0.251,0.229,0.275,0.474,0.955,0.724,0.074,209538],
+    ["ctx0_noise1_rand500_neg1_hard0","2b",0.64,1,500,1,0,0.252,0.231,0.287,0.623,0.935,0.737,0.044,148034],
+    ["ctx0_noise1_rand2000_neg1_hard0","2b",0.64,1,2000,1,0,0.259,0.242,0.272,0.590,0.930,0.728,0.046,148034],
+    ["ctx0_noise1_rand1000_neg2_hard0","2c",0.64,1,1000,2,0,0.260,0.248,0.280,0.627,0.932,0.729,0.048,148034],
+    ["ctx1_noise2_rand500_neg1_hard0","4",1.92,2,500,1,0,0.263,0.239,0.290,0.562,0.954,0.726,0.042,86658],
+    ["ctx0_noise1_rand1000_neg3_hard0","2c",0.64,1,1000,3,0,0.265,0.249,0.280,0.655,0.929,0.726,0.048,148034],
+    ["ctx1_noise1_rand500_neg1_hard0","4",1.92,1,500,1,0,0.265,0.241,0.285,0.562,0.953,0.724,0.041,86658],
+    ["ctx1_noise1_rand500_neg2_hard0","4",1.92,1,500,2,0,0.277,0.265,0.288,0.611,0.952,0.716,0.042,86658],
+    ["ctx0_noise1_rand1000_neg5_hard0","2c",0.64,1,1000,5,0,0.296,0.260,0.343,0.721,0.938,0.712,0.047,148034],
+    ["ctx0_noise1_rand200_neg1_hard0","start",0.64,1,200,1,0,0.297,0.275,0.317,0.759,0.933,0.704,0.044,148034],
+    ["ctx6_noise2_rand500_neg1_hard0","4",8.32,2,500,1,0,0.297,0.252,0.344,0.568,0.948,0.703,0.068,209538],
+    ["ctx1_noise2_rand500_neg2_hard0","4",1.92,2,500,2,0,0.298,0.265,0.336,0.674,0.952,0.712,0.043,86658],
+    ["ctx0_noise2_rand200_neg1_hard0","2a",0.64,2,200,1,0,0.308,0.283,0.333,0.729,0.947,0.695,0.054,148034],
+    ["ctx6_noise1_rand500_neg2_hard0","4",8.32,1,500,2,0,0.312,0.282,0.348,0.673,0.947,0.693,0.069,209538],
+    ["ctx6_noise2_rand500_neg2_hard0","4",8.32,2,500,2,0,0.324,0.289,0.389,0.639,0.947,0.695,0.073,209538],
+    ["ctx0_noise3_rand200_neg1_hard0","2a",0.64,3,200,1,0,0.325,0.301,0.350,0.736,0.939,0.698,0.046,148034],
+    ["ctx0_noise10_rand200_neg1_hard0","2a",0.64,10,200,1,0,0.328,0.309,0.355,0.662,0.954,0.689,0.048,148034],
+    ["ctx0_noise5_rand200_neg1_hard0","2a",0.64,5,200,1,0,0.340,0.311,0.359,0.780,0.947,0.689,0.044,148034],
+    ["ctx1_noise1_rand1000_neg1_hard1","5",1.92,1,1000,1,1,0.379,0.285,0.533,0.802,0.909,0.691,0.041,86658],
+    ["ctx0_noise20_rand200_neg1_hard0","2a",0.64,20,200,1,0,0.390,0.337,0.457,0.834,0.959,0.675,0.045,148034],
+    ["ctx0_noise1_rand0_neg1_hard0","2b",0.64,1,0,1,0,0.400,0.370,0.439,0.908,0.951,0.662,0.045,148034]
+  ];
+  var R = {};
+  RAW.forEach(function (r) { R[r[0]] = { name: r[0], step: r[1], win: r[2], noise: r[3], rand: r[4], neg: r[5], hard: r[6], m: r[7], lo: r[8], hi: r[9], f90: r[10], mr: r[11], f1: r[12], cpu: r[13], par: r[14] }; });
+  // the final model under step 1's rule, which the stages 3-5 compared against
+  var FINAL_LOCKED = { m: 0.203, lo: 0.185, hi: 0.220 };
+  var FA85 = {"ctx1_noise1_rand1000_neg1_hard0": 0.284, "ctx1_noise1_rand1000_neg1_hard3": 0.268, "ctx6_noise1_rand1000_neg1_hard0": 0.284, "ctx7_noise1_rand1000_neg1_hard0": 0.271, "ctx4_noise1_rand1000_neg1_hard0": 0.288, "ctx0_noise1_rand1000_neg1_hard0": 0.315, "ctx9_noise1_rand1000_neg1_hard0": 0.298, "ctx5_noise1_rand1000_neg1_hard0": 0.291, "ctx8_noise1_rand1000_neg1_hard0": 0.300, "ctx1_noise2_rand1000_neg1_hard0": 0.301, "ctx2_noise1_rand1000_neg1_hard0": 0.302, "ctx1_noise1_rand1000_neg1_hard2": 0.310, "ctx6_noise2_rand1000_neg2_hard0": 0.299, "ctx3_noise1_rand1000_neg1_hard0": 0.314, "ctx1_noise2_rand1000_neg2_hard0": 0.325, "ctx6_noise1_rand500_neg1_hard0": 0.315, "ctx1_noise1_rand1000_neg2_hard0": 0.347, "ctx6_noise1_rand1000_neg2_hard0": 0.332, "ctx6_noise2_rand1000_neg1_hard0": 0.329, "ctx0_noise1_rand500_neg1_hard0": 0.375, "ctx0_noise1_rand2000_neg1_hard0": 0.385, "ctx0_noise1_rand1000_neg2_hard0": 0.391, "ctx1_noise2_rand500_neg1_hard0": 0.360, "ctx0_noise1_rand1000_neg3_hard0": 0.391, "ctx1_noise1_rand500_neg1_hard0": 0.367, "ctx1_noise1_rand500_neg2_hard0": 0.386, "ctx0_noise1_rand1000_neg5_hard0": 0.431, "ctx0_noise1_rand200_neg1_hard0": 0.434, "ctx6_noise2_rand500_neg1_hard0": 0.386, "ctx1_noise2_rand500_neg2_hard0": 0.420, "ctx0_noise2_rand200_neg1_hard0": 0.464, "ctx6_noise1_rand500_neg2_hard0": 0.423, "ctx6_noise2_rand500_neg2_hard0": 0.435, "ctx0_noise3_rand200_neg1_hard0": 0.447, "ctx0_noise10_rand200_neg1_hard0": 0.455, "ctx0_noise5_rand200_neg1_hard0": 0.478, "ctx1_noise1_rand1000_neg1_hard1": 0.532, "ctx0_noise20_rand200_neg1_hard0": 0.547, "ctx0_noise1_rand0_neg1_hard0": 0.556};
+  function v(name) { return name === "ctx1_noise1_rand1000_neg1_hard0" ? FINAL_LOCKED : R[name]; }
+
+  // ---------- yardstick illustration: recall vs false alarms/h (two real anchor points per curve) ----------
+  (function () {
+    var s = document.getElementById("yard");
+    var L = 70, Rt = 740, T = 20, B = 220;
+    function x(fa) { return L + fa / 0.8 * (Rt - L); }
+    function y(rc) { return B - (rc - 0.75) / 0.2 * (B - T); }
+    [0, 0.2, 0.4, 0.6, 0.8].forEach(function (t) {
+      s.appendChild(el("line", { x1: x(t), x2: x(t), y1: T, y2: B, stroke: "var(--line)" }));
+      s.appendChild(el("text", { x: x(t), y: B + 18, "text-anchor": "middle", class: "lab" }, t.toFixed(1)));
+    });
+    [0.75, 0.8, 0.85, 0.9, 0.95].forEach(function (t) {
+      s.appendChild(el("text", { x: L - 8, y: y(t) + 4, "text-anchor": "end", class: "lab" }, Math.round(t * 100) + "%"));
+    });
+    s.appendChild(el("text", { x: (L + Rt) / 2, y: B + 40, "text-anchor": "middle", class: "lab" }, "False alarms per hour on the practice days"));
+    s.appendChild(el("text", { x: 14, y: T + 2, class: "lab" }, "Recall"));
+    s.appendChild(el("text", { x: L + 8, y: T + 14, class: "lab" }, "↑ higher on the curve = lower (looser) cut-off: more rumbles found, more false alarms"));
+    // curves: built from each version's real points at 80%, 85%, 90% recall and its maximum recall
+    function curve(pts, color, label, lx, ly) {
+      var d = "";
+      pts.forEach(function (p, i) { d += (i ? " L" : "M") + x(p[0]).toFixed(1) + "," + y(p[1]).toFixed(1); });
+      s.appendChild(el("path", { d: d, fill: "none", stroke: color, "stroke-width": 2.5 }));
+      pts.forEach(function (p) { s.appendChild(el("circle", { cx: x(p[0]), cy: y(p[1]), r: 3.5, fill: color })); });
+      s.appendChild(el("text", { x: lx, y: ly, class: "strong", style: "fill:" + color }, label));
+    }
+    s.appendChild(el("line", { x1: L, x2: Rt, y1: y(0.8), y2: y(0.8), stroke: "var(--fg)", "stroke-dasharray": "5 4" }));
+    s.appendChild(el("text", { x: Rt, y: y(0.8) - 8, "text-anchor": "end", class: "lab" }, "the 80% line: read the false alarms here"));
+    curve([[0.297, 0.8], [0.434, 0.85], [0.759, 0.9]], "var(--bad)", "After step 1 (new rule only)", x(0.56), y(0.86) + 4);
+    curve([[0.191, 0.8], [0.284, 0.85], [0.439, 0.9]], "var(--accent)", "Final model", x(0.30), y(0.9) - 10);
+    s.appendChild(el("line", { x1: x(0.191), x2: x(0.191), y1: y(0.8), y2: B, stroke: "var(--accent)", "stroke-dasharray": "2 3" }));
+    s.appendChild(el("line", { x1: x(0.297), x2: x(0.297), y1: y(0.8), y2: B, stroke: "var(--bad)", "stroke-dasharray": "2 3" }));
+    s.appendChild(el("text", { x: x(0.191) + 6, y: B - 8, class: "val", style: "fill:var(--accent)" }, "0.19"));
+    s.appendChild(el("text", { x: x(0.297) + 6, y: B - 8, class: "val", style: "fill:var(--bad)" }, "0.30"));
+  })();
+
+  // ---------- stage ladder ----------
+  var LADDER = [
+    ["Start", "E2's data with FruitPunch's alarm rule", "The starting point for everything else.", "0.498", "start"],
+    ["1", "Alarm rule", "1,960 rules tried, no retraining", "0.498 → 0.297", "kept"],
+    ["2a", "How many times to repeat the noise clips", "6 options", "kept ×1", "same"],
+    ["2b", "How many random forest moments per day", "5 options", "0.297 → 0.214", "kept"],
+    ["2c", "How many negatives per rumble", "4 options", "kept 1", "same"],
+    ["3", "How long the listening window is", "10 options, 0.64 s to 12.16 s", "0.214 → 0.203", "kept"],
+    ["4", "Combinations of the best options", "16 combinations", "kept step 3's model", "same"],
+    ["5", "Learning from its own false alarms", "0 to 3 rounds", "kept 0 rounds", "same"],
+    ["6", "Alarm rule again, for the final model", "1,960 rules tried", "0.203 → 0.191", "kept"]
+  ];
+  var lad = document.getElementById("ladder");
+  LADDER.forEach(function (r) {
+    var chip = r[4] === "kept" ? '<span class="chip kept">improved</span>' : r[4] === "same" ? '<span class="chip same">no change</span>' : "";
+    var li = h("li", {}, '<span class="st">' + (r[0] === "Start" ? "Start" : "Step " + r[0]) + '</span><span class="q"><b>' + r[1] + "</b><span>" + r[2] + '</span></span><span class="res">' + r[3] + chip + "</span>");
+    lad.appendChild(li);
+  });
+
+  // ---------- progress chart ----------
+  (function () {
+    var s = document.getElementById("progress");
+    var rows = [["Start: FruitPunch's alarm rule", 0.498, 0.460, 0.557, "var(--bar-muted)"],
+                ["Step 1: new alarm rule", 0.297, 0.275, 0.317, "var(--accent)"],
+                ["Step 2b: 1,000 random frames a day", 0.214, 0.207, 0.224, "var(--accent)"],
+                ["Step 3: 1.92 s listening window", 0.203, 0.185, 0.220, "var(--accent)"],
+                ["Step 6: rule re-tuned (final)", 0.191, 0.178, 0.210, "var(--win)"]];
+    barChart(s, rows, 0.6, 270);
+  })();
+
+  function barChart(s, rows, max, left) {
+    var Rt = 700, T = 24, rowH = 36;
+    var H = T + rows.length * rowH + 8;
+    s.setAttribute("viewBox", "0 0 760 " + H);
+    function x(n) { return left + n / max * (Rt - left); }
+    var ticks = []; for (var t = 0; t <= max + 1e-9; t += 0.1) ticks.push(+t.toFixed(1));
+    ticks.forEach(function (t) {
+      s.appendChild(el("line", { x1: x(t), x2: x(t), y1: T - 4, y2: H - 6, stroke: "var(--line)" }));
+      s.appendChild(el("text", { x: x(t), y: T - 10, "text-anchor": "middle", class: "lab" }, t.toFixed(1)));
+    });
+    rows.forEach(function (r, i) {
+      var y = T + i * rowH + 6;
+      s.appendChild(el("text", { x: 4, y: y + 15, class: r[5] ? "strong" : "" }, r[0]));
+      s.appendChild(el("rect", { x: left, y: y, width: Math.max(1, x(r[1]) - left), height: 20, rx: 3, style: "fill:" + r[4] }));
+      s.appendChild(el("line", { x1: x(r[2]), x2: x(r[3]), y1: y + 10, y2: y + 10, stroke: "var(--whisker)", "stroke-width": 1.5 }));
+      s.appendChild(el("line", { x1: x(r[2]), x2: x(r[2]), y1: y + 5, y2: y + 15, stroke: "var(--whisker)", "stroke-width": 1.5 }));
+      s.appendChild(el("line", { x1: x(r[3]), x2: x(r[3]), y1: y + 5, y2: y + 15, stroke: "var(--whisker)", "stroke-width": 1.5 }));
+      s.appendChild(el("text", { x: x(r[3]) + 8, y: y + 15, class: "val" }, r[1].toFixed(3)));
+    });
+  }
+
+  // ---------- stage cards ----------
+  function opt(label, name, role) { var o = v(name); return [label, o.m, o.lo, o.hi, role === "win" ? "var(--win)" : role === "tie" ? "var(--accent)" : "var(--bar)", role === "win", name]; }
+  var FINAL = "ctx1_noise1_rand1000_neg1_hard0";
+  function cell(x, d) { return '<td class="r num">' + (x == null ? "–" : x.toFixed(d == null ? 3 : d)) + "</td>"; }
+  function numbersTable(st) {
+    var star = false;
+    var body = st.chart.map(function (r) {
+      var name = r[6], o = name ? R[name] : null, m = r[1], lo = r[2], hi = r[3], f85 = null, f90 = null, mr = null, f1 = null, sp = null, mark = "";
+      if (st.id === "s1") { if (r[5]) { o = R["ctx0_noise1_rand200_neg1_hard0"]; } }
+      if (st.id === "s6" && r[5]) o = R[FINAL];
+      if (o) { f85 = FA85[o.name]; f90 = o.f90; mr = o.mr; f1 = o.f1; sp = 31 + o.cpu;
+        if (o.name === FINAL && st.id !== "s6") { mark = "*"; star = true; } }
+      if (st.id === "s6" && !r[5]) { f85 = f90 = mr = f1 = null; sp = 31 + R[FINAL].cpu; }
+      var best = r[5] ? ' <span class="chip kept">kept</span>' : "";
+      return "<tr" + (r[5] ? ' class="win"' : "") + "><td>" + r[0] + best + '</td><td class="r num">' + m.toFixed(3) + ' <span class="muted">(' + lo.toFixed(3) + "–" + hi.toFixed(3) + ")</span></td>" +
+        (f85 == null ? cell(null) : '<td class="r num">' + f85.toFixed(3) + mark + "</td>") + (f90 == null ? cell(null) : '<td class="r num">' + f90.toFixed(3) + mark + "</td>") +
+        (mr == null ? cell(null) : '<td class="r num">' + mr.toFixed(3) + mark + "</td>") + (f1 == null ? cell(null) : '<td class="r num">' + f1.toFixed(3) + mark + "</td>") + cell(sp, 1) + "</tr>";
+    }).join("");
+    var note = "False alarms per hour on the practice days, averaged over 5 runs (range over runs in brackets). Lower is better; max recall and F1 higher is better. Inference = seconds to scan 24 h of audio, AVES included." +
+      (star ? " * Measured under the final alarm rule of step 6; the 80% column uses step 1's rule like every other row." : "") +
+      (st.id === "s1" || st.id === "s6" ? " – = not recorded for that rule." : "");
+    return '<div class="tablebox"><table class="wide"><thead><tr><th>Option</th><th class="r">FA/h at 80% recall</th><th class="r">at 85%</th><th class="r">at 90%</th><th class="r">Max recall</th><th class="r">Best F1</th><th class="r">Inference s / 24 h</th></tr></thead><tbody>' + body + '</tbody></table></div><p class="small muted">' + note + "</p>";
+  }
+  var STAGES = [
+    { id: "s1", n: "Step 1", t: "The alarm rule", time: "9 min", trained: "0 new (reuses the starting model)",
+      what: "The classifier gives every 0.64 s frame a probability. The alarm rule decides which frames become an alarm. FruitPunch's rule: probability above 0.5 for at least 4 frames in a row, with the alarm scored by the average probability.",
+      tried: "Every combination of 5 settings, 1,960 rules in all: the 'on' level (0.5 down to 0.2), the minimum length (2 to 8 frames), smoothing the probabilities over 1 to 9 frames, joining alarms that are up to 3 frames apart, and scoring alarms by their average or their peak.",
+      why: "Forest rumbles are often faint. A rumble that sits at 0.35 for 4 seconds is a clear call, but FruitPunch's rule can never report it, so recall hits a ceiling around 85–90%.",
+      chart: [["FruitPunch's rule (above 0.5, 4 frames)", 0.498, 0.460, 0.557, "var(--bar)", false], ["New rule (above 0.25, 6 frames, smoothed)", 0.297, 0.275, 0.317, "var(--win)", true]],
+      verdict: "Kept: above 0.25 for at least 6 frames, after smoothing over 5 frames, joining alarms up to 2 frames apart, scored by the average. False alarms at 80% recall fell by 40%. This rule was then fixed for steps 2 to 5.", same: false },
+    { id: "s2a", n: "Step 2a", t: "How much noise to show it", time: "2 h 46 min", trained: "5 new versions",
+      what: "The 254 noise clips (thunder, rain, wind, engines and so on) are cut into 0.64 s frames end to end, and every frame is added to training as 'not a rumble': 11,340 frames, about 2 hours of noise. 'Repeating' copies that same set of frames 2 to 20 times, with no new audio and no changes, so it only gives the noise more weight. Because the total of 'not a rumble' examples stays at about 1 per rumble, more noise copies push out gaps between rumbles (155,073 gap frames at ×1, 109,707 at ×5).",
+      tried: "Noise clips used 1, 2, 3, 5, 10 and 20 times.",
+      why: "In Part 1, adding the noise clips gave the largest single improvement, so giving them more weight seemed promising.",
+      chart: [opt("×1 (as before)", "ctx0_noise1_rand200_neg1_hard0", "win"), opt("×2", "ctx0_noise2_rand200_neg1_hard0"), opt("×3", "ctx0_noise3_rand200_neg1_hard0"), opt("×5", "ctx0_noise5_rand200_neg1_hard0"), opt("×10", "ctx0_noise10_rand200_neg1_hard0"), opt("×20", "ctx0_noise20_rand200_neg1_hard0")],
+      verdict: "No change: using the clips once was best. Every extra repeat raised false alarms, with ×20 the worst. The repeats crowd out the gaps between real rumbles, which are the more useful 'not a rumble' examples.", same: true },
+    { id: "s2b", n: "Step 2b", t: "How much random forest background to show it", time: "2 h 12 min", trained: "4 new versions",
+      what: "From each of the 130 forest training days, a fixed random set of frames at least 30 s from any labelled rumble is added as 'not a rumble'. They teach the detector what an ordinary day under the canopy sounds like. The total of 'not a rumble' examples stays at about 1 per rumble (about 192,000), so these frames replace gap frames rather than adding data: at 1,000 a day there are 130,000 random, 11,340 noise and 51,080 gap frames. At 2,000 a day the 75% cap was hit and only about half the noise frames were used.",
+      tried: "0, 200 (as before), 500, 1,000 and 2,000 random frames per day.",
+      why: "The detector runs on whole days, which are mostly background, while the training data was mostly rumbles and the gaps right next to them.",
+      chart: [opt("0 a day", "ctx0_noise1_rand0_neg1_hard0"), opt("200 a day (as before)", "ctx0_noise1_rand200_neg1_hard0"), opt("500 a day", "ctx0_noise1_rand500_neg1_hard0"), opt("1,000 a day", "ctx0_noise1_rand1000_neg1_hard0", "win"), opt("2,000 a day", "ctx0_noise1_rand2000_neg1_hard0")],
+      verdict: "Kept: 1,000 random frames a day, which cut false alarms by another 28%. Using none was the worst version in the whole run, and 2,000 was no better than 1,000. Note that 2,000 was not a fair test: noise plus random frames may fill at most 75% of the 'not a rumble' slots (about 144,000), so both were shrunk to 53%. It really used about 1,060 random frames a day and only half the noise.", same: false },
+    { id: "s2c", n: "Step 2c", t: "How many negatives per rumble", time: "1 h 40 min", trained: "3 new versions",
+      what: "The total of 'not a rumble' examples is raised to 2, 3 or 5 per rumble. Noise (11,340 frames) and random forest frames (130,000) stay fixed at step 2b's winner, and the extra slots are filled with more distinct gap frames from beside rumbles (none repeated): 51,080 gap frames at 1:1, 243,477 at 1:2, 435,900 at 1:3 and 820,717 at 1:5. So the share of noise and random background falls from 73% to 15%.",
+      tried: "1, 2, 3 and 5 negatives per rumble.",
+      why: "Real recordings are over 99% non-rumble, so more negatives might make the detector more cautious.",
+      chart: [opt("1 per rumble (as before)", "ctx0_noise1_rand1000_neg1_hard0", "win"), opt("2 per rumble", "ctx0_noise1_rand1000_neg2_hard0"), opt("3 per rumble", "ctx0_noise1_rand1000_neg3_hard0"), opt("5 per rumble", "ctx0_noise1_rand1000_neg5_hard0")],
+      verdict: "No change: 1 per rumble was best, and every higher ratio made it worse. More gap examples also dilute the noise and random examples that step 2b showed are valuable.", same: true },
+    { id: "s3", n: "Step 3", t: "How long the listening window is", time: "5 h 00 min", trained: "9 new versions",
+      what: "By default the classifier judges each 0.64 s frame on its own. A wider window lets it also hear the frames on either side, since a rumble usually lasts several seconds.",
+      tried: "10 window lengths, from 0.64 s (1 frame) to 12.16 s (19 frames), in steps of 2 frames. Speed and memory were measured for each (see section 7).",
+      why: "More context could help it tell a rumble from a short thump or a passing engine.",
+      chart: [opt("0.64 s (as before)", "ctx0_noise1_rand1000_neg1_hard0"), opt("1.92 s", "ctx1_noise1_rand1000_neg1_hard0", "win"), opt("3.20 s", "ctx2_noise1_rand1000_neg1_hard0"), opt("4.48 s", "ctx3_noise1_rand1000_neg1_hard0"), opt("5.76 s", "ctx4_noise1_rand1000_neg1_hard0"), opt("7.04 s", "ctx5_noise1_rand1000_neg1_hard0"), opt("8.32 s", "ctx6_noise1_rand1000_neg1_hard0", "tie"), opt("9.60 s", "ctx7_noise1_rand1000_neg1_hard0"), opt("10.88 s", "ctx8_noise1_rand1000_neg1_hard0"), opt("12.16 s", "ctx9_noise1_rand1000_neg1_hard0")],
+      verdict: "Kept: 1.92 s. The 8.32 s window scored a hair lower (0.198 against 0.203), but the gap is well inside the run-to-run spread, so the tie rule kept the shorter, smaller window. All windows from 1.92 s up scored within luck of each other, and all beat 0.64 s at 85% and 90% recall.", same: false },
+    { id: "s4", n: "Step 4", t: "Combinations", time: "7 h 47 min", trained: "14 new versions (2 reused)",
+      what: "Steps 2a to 3 each changed one thing with the others fixed. Some options might only help together, so this step trained every combination of the top two options from each step.",
+      tried: "Noise ×1 or ×2, 1,000 or 500 random frames a day, 1 or 2 negatives per rumble, and a 1.92 s or 8.32 s window: 2 × 2 × 2 × 2 = 16 combinations, all shown.",
+      why: "This guards against the main weakness of changing one thing at a time.",
+      chart: (function () { var c = ["ctx1_noise1_rand1000_neg1_hard0", "ctx6_noise1_rand1000_neg1_hard0", "ctx1_noise2_rand1000_neg1_hard0", "ctx6_noise2_rand1000_neg2_hard0", "ctx1_noise2_rand1000_neg2_hard0", "ctx6_noise1_rand500_neg1_hard0", "ctx1_noise1_rand1000_neg2_hard0", "ctx6_noise1_rand1000_neg2_hard0", "ctx6_noise2_rand1000_neg1_hard0", "ctx1_noise2_rand500_neg1_hard0", "ctx1_noise1_rand500_neg1_hard0", "ctx1_noise1_rand500_neg2_hard0", "ctx6_noise2_rand500_neg1_hard0", "ctx1_noise2_rand500_neg2_hard0", "ctx6_noise1_rand500_neg2_hard0", "ctx6_noise2_rand500_neg2_hard0"];
+        return c.map(function (n) { var o = R[n]; var lab = o.win + " s, noise ×" + o.noise + ", " + o.rand + "/day, " + o.neg + ":1"; return opt(lab, n, n === c[0] ? "win" : n === c[1] ? "tie" : ""); }); })(),
+      verdict: "No change: the best two were again step 3's two windows, tied, so the 1.92 s version stayed. No combination beat the options that won one at a time.", same: true },
+    { id: "s5", n: "Step 5", t: "Learning from its own false alarms", time: "1 h 58 min", trained: "3 new versions",
+      what: "The current model is run over the training days, and the moments it wrongly flags as rumbles are added to training as 'not a rumble'. Then it is retrained. This can repeat for several rounds.",
+      tried: "0 (as before), 1, 2 and 3 rounds. The rounds found 51,627, then 1.1 million, then 12,610 new false-alarm frames, of which a capped share was used.",
+      why: "This is a common way to cut false alarms on sounds the model keeps confusing with rumbles.",
+      chart: [opt("0 rounds (as before)", "ctx1_noise1_rand1000_neg1_hard0", "win"), opt("1 round", "ctx1_noise1_rand1000_neg1_hard1"), opt("2 rounds", "ctx1_noise1_rand1000_neg1_hard2"), opt("3 rounds", "ctx1_noise1_rand1000_neg1_hard3", "tie")],
+      verdict: "No change: one round made it clearly worse and less stable across runs. Three rounds came back to a tie (0.195 against 0.203) but needed about four times the training, so the tie rule kept 0 rounds.", same: true },
+    { id: "s6", n: "Step 6", t: "Re-tuning the alarm rule for the final model", time: "9 min", trained: "0 new",
+      what: "The alarm rule from step 1 was tuned on the starting model. The final model's probabilities behave a little differently, so the 1,960 rules were searched again.",
+      tried: "The same 1,960 rules as step 1.",
+      why: "This is free, since it needs no retraining.",
+      chart: [opt("Step 1's rule", "ctx1_noise1_rand1000_neg1_hard0"), ["New rule (above 0.2, 8 frames, smoothed)", 0.191, 0.178, 0.210, "var(--win)", true]],
+      verdict: "Kept: above 0.2 for at least 8 frames, smoothing over 5 frames, joining gaps of up to 2 frames, scored by the average. A small but free gain. (FruitPunch's own rule on this model would give 0.245.)", same: false }
+  ];
+  var RULES = {"s1":{"rows":[[0.25,6,5,2,"mean",0.2969,0.275,0.317,0.933,0.704],[0.25,4,5,2,"mean",0.2975,0.276,0.318,0.962,0.704],[0.25,5,5,2,"mean",0.2975,0.276,0.318,0.951,0.704],[0.25,2,5,2,"mean",0.2978,0.276,0.318,0.967,0.704],[0.25,3,5,2,"mean",0.2978,0.276,0.318,0.965,0.704],[0.2,5,3,3,"mean",0.3014,0.269,0.328,0.95,0.705],[0.2,4,3,3,"mean",0.3032,0.269,0.331,0.965,0.704],[0.2,2,3,3,"mean",0.3034,0.269,0.331,0.981,0.704],[0.2,3,3,3,"mean",0.3034,0.269,0.331,0.977,0.704],[0.2,6,3,2,"mean",0.3038,0.289,0.324,0.927,0.703],[0.2,7,3,3,"mean",0.3039,0.285,0.318,0.896,0.704],[0.2,6,3,3,"mean",0.3051,0.283,0.326,0.929,0.705],[0.25,6,5,3,"mean",0.308,0.294,0.336,0.934,0.701],[0.25,7,5,3,"mean",0.308,0.287,0.364,0.905,0.701],[0.2,8,5,2,"mean",0.3084,0.293,0.329,0.897,0.7],[0.2,5,3,2,"mean",0.3084,0.293,0.326,0.95,0.703],[0.25,4,5,3,"mean",0.3085,0.294,0.337,0.962,0.701],[0.25,5,5,3,"mean",0.3085,0.294,0.337,0.951,0.701],[0.3,6,5,3,"mean",0.3088,0.299,0.324,0.914,0.702],[0.25,2,5,3,"mean",0.3094,0.294,0.339,0.967,0.701],[0.25,3,5,3,"mean",0.3094,0.294,0.339,0.965,0.701],[0.2,2,3,2,"mean",0.3097,0.294,0.328,0.981,0.703],[0.2,3,3,2,"mean",0.3097,0.294,0.328,0.977,0.703],[0.2,4,3,2,"mean",0.3097,0.294,0.328,0.965,0.703],[0.2,8,5,3,"mean",0.3107,0.283,0.331,0.9,0.698],[0.25,7,5,2,"mean",0.3108,0.274,0.349,0.904,0.704],[0.25,6,3,3,"mean",0.3113,0.306,0.321,0.915,0.704],[0.2,7,5,2,"mean",0.3117,0.282,0.331,0.927,0.7],[0.3,5,5,3,"mean",0.3126,0.3,0.33,0.94,0.701],[0.2,7,3,2,"mean",0.3126,0.3,0.323,0.894,0.702]],"fp":[0.498,0.46,0.557,0.892]},"s6":{"rows":[[0.2,8,5,2,"mean",0.1905,0.178,0.21,0.914,0.751],[0.25,8,9,3,"max",0.1911,0.161,0.261,0.94,0.754],[0.2,2,5,2,"mean",0.1917,0.178,0.211,0.971,0.753],[0.2,3,5,2,"mean",0.1917,0.178,0.211,0.97,0.753],[0.2,4,5,2,"mean",0.1917,0.178,0.211,0.968,0.753],[0.2,5,5,2,"mean",0.1917,0.178,0.211,0.964,0.753],[0.2,6,5,2,"mean",0.1917,0.178,0.211,0.952,0.753],[0.2,7,5,2,"mean",0.1917,0.178,0.211,0.938,0.752],[0.2,8,7,3,"max",0.1917,0.161,0.265,0.942,0.754],[0.35,8,9,3,"max",0.1942,0.162,0.263,0.893,0.754],[0.3,8,7,3,"max",0.195,0.163,0.266,0.899,0.754],[0.4,7,7,3,"max",0.1951,0.168,0.26,0.889,0.754],[0.25,7,9,3,"max",0.1951,0.163,0.269,0.952,0.752],[0.2,8,5,3,"max",0.1951,0.16,0.269,0.915,0.754],[0.4,8,9,3,"max",0.1952,0.167,0.262,0.869,0.754],[0.25,2,9,3,"max",0.1954,0.163,0.27,0.957,0.752],[0.25,3,9,3,"max",0.1954,0.163,0.27,0.957,0.752],[0.25,4,9,3,"max",0.1954,0.163,0.27,0.957,0.752],[0.25,5,9,3,"max",0.1954,0.163,0.27,0.956,0.752],[0.25,6,9,3,"max",0.1954,0.163,0.27,0.955,0.752],[0.2,8,9,3,"max",0.1954,0.162,0.27,0.955,0.752],[0.2,2,9,3,"max",0.1955,0.162,0.271,0.963,0.752],[0.2,3,9,3,"max",0.1955,0.162,0.271,0.963,0.752],[0.2,4,9,3,"max",0.1955,0.162,0.271,0.963,0.752],[0.2,5,9,3,"max",0.1955,0.162,0.271,0.963,0.752],[0.2,6,9,3,"max",0.1955,0.162,0.271,0.962,0.752],[0.2,7,9,3,"max",0.1955,0.162,0.271,0.96,0.752],[0.35,8,7,3,"max",0.1957,0.168,0.275,0.877,0.754],[0.4,8,9,2,"max",0.1958,0.167,0.262,0.869,0.754],[0.35,8,9,2,"max",0.1958,0.162,0.265,0.893,0.753]],"fp":[0.245,0.21,0.281,0.932]}};
+  var INSIGHT = {
+    s1: "The rule alone cut false alarms at 80% recall from 0.498 to 0.297 an hour, with the same model. Under the new rule the model can reach 93% of rumbles, which FruitPunch's rule could not. The 5 runs also agree more closely (range 0.04 instead of 0.10). Of the 1,960 rules, the 30 best all land between 0.297 and 0.313, inside each other's luck range, so many rules are about equally good. They share a pattern: on level 0.2–0.3, smoothing over 3–5 frames, joining gaps of 2–3 frames, and scoring by the average. The minimum length barely changes false alarms at 80% recall, but it changes how many rumbles the detector can reach at all: the kept rule (6 frames) tops out at 93.3%, while the same rule with 2 frames gives 0.298 false alarms (+0.001) and tops out at 96.7%.",
+    s2a: "At 80% recall, ×1 is best and false alarms climb steadily with more repeats. But the picture changes at 90% recall: ×10 gives 0.662 against 0.759 for ×1, and maximum recall rises from 0.933 to 0.959 with ×20. So extra noise helps the detector at loose cut-offs but costs it at stricter ones. If ELP runs at 90% recall, ×10 noise deserves a second look.",
+    s2b: "1,000 frames a day is best at every recall level (0.214 / 0.315 / 0.534), not just at 80%, so this result is solid. Going from 0 to 1,000 nearly halves false alarms at 80% and 90%. The run-to-run range is also the tightest in the whole run (0.207–0.224).",
+    s2c: "1 negative per rumble is best at every recall level, and 5 per rumble is clearly worst (0.296 at 80%, 0.721 at 90%). Keep in mind these versions got only 14–43 epochs in their 5 minutes, so part of the loss may be under-training. The extra negatives were gap frames, which diluted the random forest background that step 2b showed helps most. Raising the ratio with more random frames instead was not tested.",
+    s3: "At 80% recall every window from 1.92 s to 12.16 s lands between 0.198 and 0.235, mostly inside each other's ranges, so the length barely matters there. At 90% recall the gap is clear: 0.534 for 0.64 s against 0.419–0.473 for the wider windows. All windows above 0.64 s also reach 94–96% maximum recall instead of 93%. Inference stays at about 31 s per day for all of them.",
+    s4: "Every combination that swapped in a second-best option did worse than the one-at-a-time winners: 2× noise, 2 negatives or 500 random frames each added about 0.02–0.07 false alarms an hour. The options don't interact in a helpful way, so changing one thing at a time found the best mix.",
+    s5: "One round of mined false alarms was the most unstable version of the run (range 0.285–0.533). Two rounds recovered most of the loss, and three tied the plain model at 80% while reaching 95% maximum recall. It may be worth revisiting with fewer, cleaner mined examples, but it is not a clear win as it stands.",
+    s6: "Re-tuning the rule for the final model shaved another 6% off false alarms (0.203 to 0.191) for free. FruitPunch's original rule on the same final model would give 0.245. Again the best rules are within luck of each other (0.191–0.196). Rules scored by the peak probability tie at 80% but swing much more between runs (0.16–0.27, against 0.18–0.21 for the average), so the average is the safer choice. The minimum-length point holds here too: the kept rule (8 frames) tops out at 91.4% of rumbles, while the same rule with 2 frames gives 0.192 (+0.001) and tops out at 97.1%. For a recall-first study, the 2-frame version is the better pick."
+  };
+  function rulesTable(id) {
+    var d = RULES[id], best = d.rows[0];
+    var rows = d.rows.map(function (r, i) {
+      var diff = r[5] - best[5];
+      return "<tr" + (i === 0 ? ' class="win"' : "") + '><td class="r num">' + (i + 1) + '</td><td class="r num">' + r[0].toFixed(2) + '</td><td class="r num">' + r[1] + '</td><td class="r num">' + r[2] + '</td><td class="r num">' + r[3] + "</td><td>" + (r[4] === "mean" ? "average" : "peak") +
+        '</td><td class="r num">' + r[5].toFixed(3) + ' <span class="muted">(' + r[6].toFixed(3) + "–" + r[7].toFixed(3) + ')</span></td><td class="r num">' + (i === 0 ? "kept" : "+" + diff.toFixed(3)) + '</td><td class="r num">' + r[8].toFixed(3) + '</td><td class="r num">' + r[9].toFixed(3) + "</td></tr>";
+    }).join("");
+    var fp = '<tr class="dim"><td class="r num">–</td><td class="r num">0.50</td><td class="r num">4</td><td class="r num">1</td><td class="r num">0</td><td>average</td><td class="r num">' + d.fp[0].toFixed(3) + ' <span class="muted">(' + d.fp[1].toFixed(3) + "–" + d.fp[2].toFixed(3) + ')</span></td><td class="r num">+' + (d.fp[0] - best[5]).toFixed(3) + '</td><td class="r num">' + d.fp[3].toFixed(3) + '</td><td class="r num">–</td></tr>';
+    var det = h("details", {});
+    det.innerHTML = "<summary>The 30 best alarm rules of the 1,960 tried, and FruitPunch's rule</summary>" +
+      '<div class="inner"><table class="wide" style="min-width:820px"><thead><tr><th class="r">Rank</th><th class="r">On level</th><th class="r">Min frames</th><th class="r">Smoothing</th><th class="r">Join gaps</th><th>Score</th><th class="r">FA/h at 80% (range)</th><th class="r">vs kept</th><th class="r">Max recall</th><th class="r">Best F1</th></tr></thead><tbody>' +
+      rows + fp + '</tbody></table><p class="small muted" style="padding:10px 10px 0">On level: probability a frame must exceed to join an alarm. Min frames: shortest alarm kept (0.64 s each). Smoothing: probabilities averaged over this many frames first. Join gaps: alarms this many frames apart are merged. Score: the alarm\'s average or peak probability, which the cut-off is applied to. The last row is FruitPunch\'s rule. The run saved only the 30 best rules.</p></div>';
+    return det;
+  }
+  var host = document.getElementById("stages");
+  STAGES.forEach(function (st) {
+    var card = h("article", { class: "stage", id: st.id });
+    card.appendChild(h("header", {}, '<span class="part">' + st.n + '</span><h3>' + st.t + '</h3><div class="meta"><span>Time: <b>' + st.time + '</b></span><span>Trained: <b>' + st.trained + '</b></span></div>'));
+    card.appendChild(h("dl", { class: "qa" }, "<dt>What it is</dt><dd>" + st.what + "</dd><dt>Why try it</dt><dd>" + st.why + "</dd><dt>Options tried</dt><dd>" + st.tried + "</dd>"));
+    var ch = h("div", { class: "chart" });
+    var svg = document.createElementNS(NS, "svg"); svg.setAttribute("role", "img"); svg.setAttribute("aria-label", st.t + ": false alarms per hour at 80% recall for each option");
+    ch.appendChild(svg); card.appendChild(ch);
+    var max = Math.max.apply(null, st.chart.map(function (r) { return r[3]; })) > 0.5 ? 0.6 : 0.5;
+    barChart(svg, st.chart, max, st.id === "s4" ? 290 : 270);
+    card.appendChild(h("div", { style: "display:flex;flex-direction:column;gap:8px" }, numbersTable(st)));
+    if (RULES[st.id]) card.appendChild(rulesTable(st.id));
+    if (INSIGHT[st.id]) card.appendChild(h("div", { class: "box", style: "padding:12px 14px;gap:4px" }, "<b>What the numbers say</b><span>" + INSIGHT[st.id] + "</span>"));
+    card.appendChild(h("div", { class: "verdict" + (st.same ? " same" : "") }, "<b>" + st.verdict.split(":")[0] + ":</b>" + st.verdict.slice(st.verdict.indexOf(":") + 1)));
+    host.appendChild(card);
+  });
+
+  // ---------- gantt ----------
+  var START = 14 * 60 + 53, SPAN = 24 * 60 + 26 + 7; // minutes from Tue 14:53 to just past Wed 15:19
+  function at(hh, mm, wed) { return (wed ? 1440 : 0) + hh * 60 + mm - START; }
+  var G = [["AVES fingerprints", at(14, 53), at(16, 18), "light"], ["Start version", at(16, 18), at(16, 55)], ["1 · Alarm rule", at(16, 55), at(17, 4)],
+           ["2a · Noise repeats", at(17, 5), at(19, 51)], ["2b · Random frames", at(19, 51), at(22, 4)], ["2c · Negatives", at(22, 4), at(23, 43)],
+           ["3 · Window", at(23, 43), at(4, 43, 1)], ["4 · Combinations", at(4, 43, 1), at(12, 30, 1)], ["5 · Own false alarms", at(12, 30, 1), at(14, 28, 1)],
+           ["6 · Alarm rule again", at(14, 29, 1), at(14, 38, 1)], ["Test scoring", at(14, 40, 1), at(15, 19, 1), "final"]];
+  var gw = document.getElementById("gantt");
+  // axis ticks at 15:00, 21:00, 03:00, 09:00, 15:00: the track spans 14:53 to 15:26 the next day
+  G.forEach(function (g) {
+    var d = g[2] - g[1], hrs = Math.floor(d / 60), mins = d % 60;
+    var row = h("div", { class: "grow" });
+    row.appendChild(h("span", {}, g[0]));
+    var tr = h("div", { class: "track" });
+    var seg = h("div", { class: "seg" + (g[3] ? " " + g[3] : ""), style: "left:" + (g[1] / SPAN * 100).toFixed(2) + "%;width:" + Math.max(0.6, d / SPAN * 100).toFixed(2) + "%" });
+    tr.appendChild(seg); row.appendChild(tr);
+    row.appendChild(h("span", { class: "t" }, (hrs ? hrs + " h " : "") + mins + " min"));
+    gw.appendChild(row);
+  });
+
+  // ---------- speed table ----------
+  var MEM = { 0.64: 0.5, 1.92: 1.1, 3.2: 1.7, 4.48: 2.2, 5.76: 2.7, 7.04: 3.2, 8.32: 3.7, 9.6: 4.2, 10.88: 4.7, 12.16: 5.1 };
+  var sr = document.getElementById("speedrows");
+  ["ctx0", "ctx1", "ctx2", "ctx3", "ctx4", "ctx5", "ctx6", "ctx7", "ctx8", "ctx9"].forEach(function (c) {
+    var o = R[c + "_noise1_rand1000_neg1_hard0"], m = v(o.name);
+    var tr = h("tr", c === "ctx1" ? { class: "win" } : {}, '<td class="r num">' + o.win.toFixed(2) + '</td><td class="r num">' + o.cpu.toFixed(2) + '</td><td class="r num">' + ((31 + o.cpu) / 24).toFixed(2) + '</td><td class="r num">' + (31 + o.cpu).toFixed(1) + '</td><td class="r num">' + o.par.toLocaleString("en-US") + '</td><td class="r num">' + MEM[o.win].toFixed(1) + ' GB</td><td class="r num">' + m.m.toFixed(3) + "</td>");
+    sr.appendChild(tr);
+  });
+
+  // ---------- all rows ----------
+  var STEPNAME = { final: "3 (final)", start: "start", "2a": "2a", "2b": "2b", "2c": "2c", "3": "3", "4": "4", "5": "5" };
+  var ar = document.getElementById("allrows");
+  RAW.forEach(function (r) {
+    var o = R[r[0]];
+    var tr = h("tr", o.step === "final" ? { class: "win" } : {}, "<td class=\"num\">" + o.name + "</td><td>" + STEPNAME[o.step] + '</td><td class="r num">' + o.win + '</td><td class="r num">' + o.noise + '</td><td class="r num">' + o.rand + '</td><td class="r num">' + o.neg + '</td><td class="r num">' + o.hard + '</td><td class="r num">' + o.m.toFixed(3) + '</td><td class="r num">' + o.lo.toFixed(3) + "–" + o.hi.toFixed(3) + '</td><td class="r num">' + o.f90.toFixed(3) + '</td><td class="r num">' + o.mr.toFixed(3) + '</td><td class="r num">' + o.f1.toFixed(3) + '</td><td class="r num">' + (31 + o.cpu).toFixed(1) + "</td>");
+    ar.appendChild(tr);
+  });
+})();
+</script>

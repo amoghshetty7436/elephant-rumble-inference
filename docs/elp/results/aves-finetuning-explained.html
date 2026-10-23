@@ -1,0 +1,258 @@
+<title>Tuning AVES for Rumbles</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column, a full-width model diagram, then option cards side by side */
+:root {
+  --bg: #f6f7f4; --panel: #ffffff; --ink: #1d2420; --muted: #5b665f; --line: #cfd6d0;
+  --frozen: #8a9a93; --frozen-bg: #e7ece9; --train: #b5651d; --train-bg: #f7e6d4;
+  --lora: #2f6f8f; --lora-bg: #dcebf2; --accent: #3d6b4f;
+  --display: "Fraunces", Georgia, serif; --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #131815; --panel: #1b221e; --ink: #e6ece8; --muted: #9fada5; --line: #33403a;
+  --frozen: #8fa199; --frozen-bg: #26302b; --train: #e39a55; --train-bg: #3a2a1b;
+  --lora: #6fb4d6; --lora-bg: #1a2f3a; --accent: #8cc4a0; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #131815; --panel: #1b221e; --ink: #e6ece8; --muted: #9fada5; --line: #33403a;
+  --frozen: #8fa199; --frozen-bg: #26302b; --train: #e39a55; --train-bg: #3a2a1b;
+  --lora: #6fb4d6; --lora-bg: #1a2f3a; --accent: #8cc4a0; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font: 17px/1.6 var(--body); }
+.wrap { max-width: 980px; margin: 0 auto; padding-block: 40px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 40px; }
+.prose { max-width: 66ch; display: grid; gap: 12px; }
+h1, h2, h3 { font-family: var(--display); font-weight: 650; text-wrap: balance; margin: 0; line-height: 1.2; }
+h1 { font-size: clamp(2rem, 5vw, 2.8rem); }
+h2 { font-size: 1.6rem; }
+h3 { font-size: 1.15rem; font-weight: 500; }
+p { margin: 0; }
+.lede { color: var(--muted); font-size: 1.1rem; }
+.eyebrow { font: 500 0.75rem var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+code, .mono { font-family: var(--mono); font-size: 0.88em; }
+.fig { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; overflow-x: auto; }
+.fig svg { display: block; min-width: 640px; width: 100%; height: auto; }
+.cap { color: var(--muted); font-size: 0.92rem; margin-top: 10px; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 0.9rem; color: var(--muted); margin-top: 12px; }
+.sw { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-right: 6px; border: 1.5px solid; }
+.sw.f { background: var(--frozen-bg); border-color: var(--frozen); }
+.sw.t { background: var(--train-bg); border-color: var(--train); }
+.sw.l { background: var(--lora-bg); border-color: var(--lora); }
+/* svg tokens */
+.s-frozen { fill: var(--frozen-bg); stroke: var(--frozen); }
+.s-train { fill: var(--train-bg); stroke: var(--train); }
+.s-lora { fill: var(--lora-bg); stroke: var(--lora); }
+.s-panel { fill: var(--panel); stroke: var(--line); }
+.t { fill: var(--ink); font: 13px var(--body); }
+.tb { fill: var(--ink); font: 600 13px var(--body); }
+.ts { fill: var(--muted); font: 11.5px var(--mono); }
+.arr { stroke: var(--muted); fill: none; stroke-width: 1.5; }
+.brace { stroke: var(--muted); fill: none; stroke-width: 1.2; }
+.opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.opt { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.opt .tag { font: 500 0.75rem var(--mono); color: var(--muted); }
+.opt dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 0.93rem; }
+.opt dt { color: var(--muted); }
+.opt dd { margin: 0; font-variant-numeric: tabular-nums; }
+.mini { display: block; width: 100%; height: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; color: var(--muted); font-size: 0.85rem; }
+.tbl { overflow-x: auto; }
+ol.plan { margin: 0; padding-left: 1.3em; display: grid; gap: 10px; max-width: 66ch; }
+.note { border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; max-width: 66ch; color: var(--muted); }
+</style>
+
+<div class="wrap">
+  <header class="prose">
+    <span class="eyebrow">ELP rumble detector · next step after the rerun</span>
+    <h1>Tuning AVES for elephant rumbles</h1>
+    <p class="lede">What AVES looks like inside, which parts we could retrain, what LoRA is, and the order I'd try things in.</p>
+  </header>
+
+  <section class="prose">
+    <h2>The model today</h2>
+    <p>Every 0.64 seconds of audio (320 samples at 500 Hz) becomes one <b>fingerprint</b>: 768 numbers from AVES. AVES learned to hear from a large collection of animal sounds, but it has never been told what a rumble is. Today it is <b>frozen</b>: we never change its 94.4 million weights. We only train our small classifier on top, which turns fingerprints into "rumble or not".</p>
+  </section>
+
+  <figure class="fig" style="margin:0">
+    <svg viewBox="0 0 900 470" role="img" aria-label="Diagram of AVES: audio, 7 convolution layers, 12 transformer layers, fingerprint, classifier, alarm rule, Raven table">
+      <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke" stroke="context-stroke"/></marker></defs>
+      <!-- audio -->
+      <rect class="s-panel" x="10" y="190" width="110" height="80" rx="8" stroke-width="1.5"/>
+      <text class="tb" x="65" y="222" text-anchor="middle">Audio</text>
+      <text class="ts" x="65" y="242" text-anchor="middle">500 Hz</text>
+      <path class="arr" d="M120 230 H150" marker-end="url(#ah)"/>
+      <!-- conv front end -->
+      <rect class="s-frozen" x="152" y="110" width="130" height="240" rx="8" stroke-width="1.5"/>
+      <text class="tb" x="217" y="140" text-anchor="middle">Sound front end</text>
+      <text class="ts" x="217" y="158" text-anchor="middle">7 convolution layers</text>
+      <g>
+        <rect class="s-frozen" x="172" y="172" width="90" height="16" rx="3"/>
+        <rect class="s-frozen" x="172" y="194" width="90" height="16" rx="3"/>
+        <rect class="s-frozen" x="172" y="216" width="90" height="16" rx="3"/>
+        <rect class="s-frozen" x="172" y="238" width="90" height="16" rx="3"/>
+        <rect class="s-frozen" x="172" y="260" width="90" height="16" rx="3"/>
+        <rect class="s-frozen" x="172" y="282" width="90" height="16" rx="3"/>
+        <rect class="s-frozen" x="172" y="304" width="90" height="16" rx="3"/>
+      </g>
+      <text class="ts" x="217" y="342" text-anchor="middle">~4 M weights</text>
+      <text class="ts" x="217" y="378" text-anchor="middle">edges, pitch, texture</text>
+      <path class="arr" d="M282 230 H312" marker-end="url(#ah)"/>
+      <!-- transformer stack -->
+      <rect class="s-panel" x="314" y="30" width="250" height="410" rx="8" stroke-width="1.5"/>
+      <text class="tb" x="439" y="56" text-anchor="middle">12 transformer layers</text>
+      <text class="ts" x="439" y="73" text-anchor="middle">~7 M weights each, ~85 M total</text>
+      <!-- layers 12..1 top to bottom; 9-12 highlighted as fine-tune candidates -->
+      <g>
+        <rect class="s-train" x="344" y="86" width="190" height="22" rx="4" stroke-width="1.5"/><text class="t" x="439" y="102" text-anchor="middle">Layer 12 (output today)</text>
+        <rect class="s-train" x="344" y="114" width="190" height="22" rx="4" stroke-width="1.5"/><text class="t" x="439" y="130" text-anchor="middle">Layer 11</text>
+        <rect class="s-lora" x="344" y="142" width="190" height="22" rx="4" stroke-width="1.5"/><text class="t" x="439" y="158" text-anchor="middle">Layer 10</text>
+        <rect class="s-lora" x="344" y="170" width="190" height="22" rx="4" stroke-width="1.5"/><text class="t" x="439" y="186" text-anchor="middle">Layer 9</text>
+        <rect class="s-frozen" x="344" y="198" width="190" height="22" rx="4" stroke-width="1.5"/><text class="t" x="439" y="214" text-anchor="middle">Layer 8</text>
+        <rect class="s-frozen" x="344" y="226" width="190" height="22" rx="4" stroke-width="1.5"/><text class="t" x="439" y="242" text-anchor="middle">Layer 7</text>
+        <rect class="s-frozen" x="344" y="254" width="190" height="22" rx="4" stroke-width="1.5"/><text class="t" x="439" y="270" text-anchor="middle">Layer 6</text>
+        <rect class="s-frozen" x="344" y="282" width="190" height="22" rx="4" stroke-width="1.5"/><text class="t" x="439" y="298" text-anchor="middle">Layer 5</text>
+        <rect class="s-frozen" x="344" y="310" width="190" height="22" rx="4" stroke-width="1.5"/><text class="t" x="439" y="326" text-anchor="middle">Layer 4</text>
+        <rect class="s-frozen" x="344" y="338" width="190" height="22" rx="4" stroke-width="1.5"/><text class="t" x="439" y="354" text-anchor="middle">Layer 3</text>
+        <rect class="s-frozen" x="344" y="366" width="190" height="22" rx="4" stroke-width="1.5"/><text class="t" x="439" y="382" text-anchor="middle">Layer 2</text>
+        <rect class="s-frozen" x="344" y="394" width="190" height="22" rx="4" stroke-width="1.5"/><text class="t" x="439" y="410" text-anchor="middle">Layer 1</text>
+      </g>
+      <path class="arr" d="M330 420 V96" marker-end="url(#ah)"/>
+      <text class="ts" x="322" y="260" text-anchor="middle" transform="rotate(-90 322 260)">sound flows upward</text>
+      <!-- brace for cache point -->
+      <path class="brace" d="M540 198 h10 M540 209 h10" />
+      <text class="ts" x="556" y="213">◀ cache here</text>
+      <!-- fingerprint -->
+      <path class="arr" d="M564 97 H600" marker-end="url(#ah)"/>
+      <rect class="s-panel" x="602" y="70" width="120" height="56" rx="8" stroke-width="1.5"/>
+      <text class="tb" x="662" y="94" text-anchor="middle">Fingerprint</text>
+      <text class="ts" x="662" y="112" text-anchor="middle">768 numbers / 0.64 s</text>
+      <path class="arr" d="M662 126 V160" marker-end="url(#ah)"/>
+      <!-- classifier -->
+      <rect class="s-train" x="602" y="162" width="120" height="56" rx="8" stroke-width="1.5"/>
+      <text class="tb" x="662" y="186" text-anchor="middle">Our classifier</text>
+      <text class="ts" x="662" y="204" text-anchor="middle">trained today</text>
+      <path class="arr" d="M662 218 V252" marker-end="url(#ah)"/>
+      <rect class="s-panel" x="602" y="254" width="120" height="56" rx="8" stroke-width="1.5"/>
+      <text class="tb" x="662" y="278" text-anchor="middle">Alarm rule</text>
+      <text class="ts" x="662" y="296" text-anchor="middle">threshold, smoothing</text>
+      <path class="arr" d="M662 310 V344" marker-end="url(#ah)"/>
+      <rect class="s-panel" x="602" y="346" width="120" height="56" rx="8" stroke-width="1.5"/>
+      <text class="tb" x="662" y="370" text-anchor="middle">Raven table</text>
+      <text class="ts" x="662" y="388" text-anchor="middle">.txt selections</text>
+      <!-- notes -->
+      <text class="ts" x="745" y="98">general → specific</text>
+      <text class="ts" x="745" y="114">upper layers are the</text>
+      <text class="ts" x="745" y="130">most task-specific,</text>
+      <text class="ts" x="745" y="146">so they are the ones</text>
+      <text class="ts" x="745" y="162">worth changing</text>
+    </svg>
+    <div class="legend">
+      <span><span class="sw f"></span>Frozen: never changes</span>
+      <span><span class="sw t"></span>Trainable in the plan (classifier today; top 2 layers in option C)</span>
+      <span><span class="sw l"></span>Also trainable in the "top 4" version of option C, or LoRA-adapted in option D</span>
+    </div>
+    <p class="cap">AVES is a wav2vec2-style model: a convolution front end turns raw audio into rough features, and 12 transformer layers refine them, each one letting every moment "look at" the surrounding 1 hour of audio. Today we read the last layer's output.</p>
+  </figure>
+
+  <section class="prose">
+    <h2>Why retrain only the top</h2>
+    <p>The lower layers learn things every sound has: onsets, pitch, harmonics, noise texture. These are just as useful for rumbles, and retraining them with our ~250 training days would mostly risk breaking them. The top layers combine those into higher-level "what is this sound" features, so that is where teaching AVES about rumbles pays off.</p>
+    <p>There's a practical reason too. If layers 1 to 8 stay frozen, we can run them once over all training audio and <b>cache layer 8's output</b>, the same way we cache fingerprints now. Training then only has to run layers 9 to 12 and the classifier, which is about a third of AVES and much faster than running the whole model at every step.</p>
+  </section>
+
+  <section style="display:grid;gap:16px">
+    <div class="prose"><h2>The four options, cheapest first</h2></div>
+    <div class="opts">
+      <article class="opt">
+        <span class="tag">A · probing (no fine-tuning)</span>
+        <h3>Find the best layer to read from</h3>
+        <p>Save the output of every layer, then train our usual classifier on each one. Middle-upper layers sometimes describe a new kind of sound better than the last one.</p>
+        <dl><dt>Changes AVES?</dt><dd>No</dd><dt>Trains</dt><dd>Only the classifier</dd><dt>Bonus</dt><dd>If layer 9 wins, inference skips layers 10–12: about 25% faster on CPU</dd></dl>
+      </article>
+      <article class="opt">
+        <span class="tag">C · partial fine-tuning</span>
+        <h3>Retrain the top 2, then top 4 layers</h3>
+        <p>Unfreeze the top layers and train them together with the classifier, with a very small learning rate so they shift gently rather than forget.</p>
+        <dl><dt>Changes AVES?</dt><dd>Yes, top layers</dd><dt>Trains</dt><dd>~14 M (top 2) or ~28 M (top 4) weights</dd><dt>Risk</dt><dd>Overfitting to the training days</dd></dl>
+      </article>
+      <article class="opt">
+        <span class="tag">D · LoRA</span>
+        <h3>Add small adapters instead</h3>
+        <p>Keep every AVES weight frozen and add a tiny correction next to the biggest weight blocks. Only the corrections are trained (see below).</p>
+        <dl><dt>Changes AVES?</dt><dd>Original weights untouched</dd><dt>Trains</dt><dd>~0.1 M weights (rank 8, top 4 layers)</dd><dt>Risk</dt><dd>Lowest overfitting risk of the three</dd></dl>
+      </article>
+    </div>
+    <p class="cap">There's no "B": B would be fine-tuning all of AVES, which I'd skip. It's slow, it needs far more data than we have, and it risks damaging what AVES already knows.</p>
+  </section>
+
+  <section class="prose">
+    <h2>What LoRA is</h2>
+    <p>Inside each transformer layer, the main work is done by big tables of weights. One of them is 768 × 768, about 590,000 numbers. Fine-tuning changes all of them. LoRA (low-rank adaptation) assumes the <i>change</i> we need is simple, so it describes the change with two thin tables instead: one 768 × 8 and one 8 × 768. Multiplied together they make a full 768 × 768 correction that gets added to the original.</p>
+  </section>
+
+  <figure class="fig" style="margin:0">
+    <svg viewBox="0 0 900 260" role="img" aria-label="LoRA: a frozen 768 by 768 weight plus the product of a 768 by 8 and an 8 by 768 trained matrix">
+      <text class="tb" x="20" y="30">One weight table inside a transformer layer</text>
+      <!-- W -->
+      <rect class="s-frozen" x="40" y="60" width="150" height="150" stroke-width="1.5"/>
+      <text class="tb" x="115" y="130" text-anchor="middle">W</text>
+      <text class="ts" x="115" y="150" text-anchor="middle">768 × 768</text>
+      <text class="ts" x="115" y="232" text-anchor="middle">589,824 · frozen</text>
+      <text class="tb" x="232" y="142" text-anchor="middle" style="font-size:26px">+</text>
+      <!-- B -->
+      <rect class="s-lora" x="275" y="60" width="16" height="150" stroke-width="1.5"/>
+      <text class="ts" x="283" y="232" text-anchor="middle">768 × 8</text>
+      <text class="tb" x="283" y="50" text-anchor="middle">B</text>
+      <text class="tb" x="312" y="142" text-anchor="middle" style="font-size:20px">×</text>
+      <!-- A -->
+      <rect class="s-lora" x="332" y="127" width="150" height="16" stroke-width="1.5"/>
+      <text class="tb" x="407" y="117" text-anchor="middle">A</text>
+      <text class="ts" x="407" y="163" text-anchor="middle">8 × 768</text>
+      <text class="ts" x="380" y="232" text-anchor="middle">12,288 · trained (2% of W)</text>
+      <text class="tb" x="525" y="142" text-anchor="middle" style="font-size:26px">=</text>
+      <!-- result -->
+      <rect class="s-lora" x="565" y="60" width="150" height="150" stroke-width="1.5" style="fill-opacity:.45"/>
+      <rect class="s-frozen" x="565" y="60" width="150" height="150" stroke-width="1.5" style="fill-opacity:.55"/>
+      <text class="tb" x="640" y="130" text-anchor="middle">W + B·A</text>
+      <text class="ts" x="640" y="150" text-anchor="middle">used when running</text>
+      <text class="ts" x="640" y="232" text-anchor="middle">same size, same speed</text>
+      <text class="ts" x="745" y="105">After training, B·A can be</text>
+      <text class="ts" x="745" y="121">added into W once, so the</text>
+      <text class="ts" x="745" y="137">model is exactly as big and</text>
+      <text class="ts" x="745" y="153">as fast as AVES today, on</text>
+      <text class="ts" x="745" y="169">CPU and GPU.</text>
+    </svg>
+    <p class="cap">"Rank 8" means the thin tables are 8 wide. Larger ranks allow bigger changes, but they also make overfitting easier. We'd typically put adapters on the attention weights of the top 4 layers.</p>
+  </figure>
+
+  <section class="prose">
+    <h2>What it means for the things you care about</h2>
+  </section>
+  <div class="tbl">
+    <table>
+      <thead><tr><th></th><th>Today (frozen)</th><th>A · probing</th><th>C · top layers</th><th>D · LoRA</th></tr></thead>
+      <tbody>
+        <tr><td>Expected gain</td><td>baseline</td><td>small, sometimes none</td><td>largest possible</td><td>close to C, safer</td></tr>
+        <tr><td>Overfitting risk</td><td>low</td><td>low</td><td>highest</td><td>low–medium</td></tr>
+        <tr><td>CPU inference time</td><td>~25 core-min / 24 h</td><td>same or faster</td><td>same</td><td>same</td></tr>
+        <tr><td>Setup time on the 4060*</td><td>-</td><td>~1 day caching + hours of training</td><td>re-uses A's cache; ~½–1 day per setting, 5 seeds</td><td>~½–1 day per setting, 5 seeds</td></tr>
+        <tr><td>Augmentation</td><td>cached</td><td>needs re-caching per layer</td><td colspan="2">needs re-caching at layer 8</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="cap" style="max-width:66ch">* Rough estimates from the GPU speed we measured (about 31 s of AVES per 24 h of audio). I'll replace them with timed numbers after the first run.</p>
+
+  <section class="prose">
+    <h2>The plan after Tuesday</h2>
+  </section>
+  <ol class="plan">
+    <li><b>Probe the layers.</b> Cache layers 6 to 12 for the training and validation days, then score each layer with the same validation days, scoring and 5 seeds as the rerun.</li>
+    <li><b>Fine-tune the top 2 layers, then the top 4,</b> starting from the rerun's best training recipe (its data mix, window size and alarm rule). The learning rate for AVES is about 100 times smaller than for the classifier, with the same early stopping on held-out days.</li>
+    <li><b>LoRA, rank 4 and 8, on the top 4 layers.</b> Keep whichever of C or D wins on the score, with fewer weights changed as the tie-breaker.</li>
+    <li><b>Check the winner on the test sets</b> (Test 1, Test 2, vehicle days) once, exactly as the rerun does. Then re-run the CPU speed test to confirm nothing got slower.</li>
+  </ol>
+  <p class="note">Like everything else, this will be a separate new script that doesn't touch your existing code, and it writes only under <span class="mono">Configurations</span>. It can't run at the same time as the rerun, because both need the GPU.</p>
+</div>
