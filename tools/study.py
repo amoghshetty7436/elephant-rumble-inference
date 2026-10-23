@@ -137,6 +137,20 @@ def wjson(w, path, obj, tries=6):
             time.sleep(2 * (i + 1))
 
 
+def tsave(w, path, obj, tries=6):
+    """torch.save to .tmp then rename, with retries like wjson (Windows locks a fresh file during a scan)."""
+    import torch
+    for i in range(tries):
+        try:
+            torch.save(obj, w.check(path + ".tmp"))
+            os.replace(w.check(path + ".tmp"), w.check(path))
+            return
+        except PermissionError:
+            if i == tries - 1:
+                raise
+            time.sleep(2 * (i + 1))
+
+
 def safe(what, fn, *args, default=None, lab=None, **kw):
     """Run one step; on any error log it to failed.txt and carry on with `default`."""
     try:
@@ -649,6 +663,7 @@ class Augmenter:
         self.root = os.path.join(lab.a.cache, "_augmented", lab.setup_id or "none")
         self._noise = None
         self._embed = None
+        self._n_day = {}
 
     def path(self, variant, pool, key):
         return os.path.join(self.root, variant, pool, f"{key}.pt")
@@ -763,7 +778,9 @@ class Augmenter:
             if os.path.exists(dst):
                 continue
             path = lab.pools[p].sounds[key]
-            n_day = Day(lab.a.cache, p, key).n
+            if (p, key) not in self._n_day:
+                self._n_day[(p, key)] = Day(lab.a.cache, p, key).n
+            n_day = self._n_day[(p, key)]
             rng = np.random.default_rng(int(hashlib.md5(f"{variant}/{p}/{key}".encode()).hexdigest()[:8], 16))
             if kind in ("clean", "rumble"):
                 pi = [i for i in dc.label_frames(labels)[0] if i < n_day]
@@ -813,8 +830,7 @@ class Augmenter:
                     "pos": torch.from_numpy(keep if kind != "background" else keep[:0]),
                     "neg": torch.from_numpy(keep if kind == "background" else keep[:0])}
             lab.w.makedirs(os.path.dirname(dst))
-            torch.save(item, lab.w.check(dst + ".tmp"))
-            os.replace(lab.w.check(dst + ".tmp"), lab.w.check(dst))
+            tsave(lab.w, dst, item)
             if j % 20 == 0:
                 log(f"augmentation {variant}: {j}/{len(jobs)} days ({fmt_dur(time.time() - t0)})")
         wjson(lab.w, self.done_path(variant), {"variant": variant, "days": len(jobs), "audio_hours": round(hours, 1),
@@ -977,8 +993,7 @@ class Lab:
                     runs.append(json.load(open(info_path)))
                     continue
                 m = train_until_converged(bank, win, y, ho_w, ho_y, s["ctx"], seed, logf, self.device)
-                torch.save(m.state_dict(), self.w.check(path + ".tmp"))
-                os.replace(self.w.check(path + ".tmp"), self.w.check(path))
+                tsave(self.w, path, m.state_dict())
                 wjson(self.w, info_path, m.run_info)
                 runs.append(m.run_info)
                 log(f"run {seed}: {m.run_info}")
@@ -1432,6 +1447,12 @@ def side_comparison(lab, r1):
 def aug_stage(lab, state, stage_options):
     """7a which sounds (1 copy, 0 dB), 7b how loud, 7c how many copies."""
     def make_all(specs):
+        try:
+            return make_each(specs)
+        finally:
+            lab.aug.release()
+
+    def make_each(specs):
         for sp in specs:
             for v in aug_variants(sp["aug"]):
                 if not lab.aug.ready(v):
@@ -1444,9 +1465,8 @@ def aug_stage(lab, state, stage_options):
                     try:
                         lab.aug.make(v)
                     except Exception:
-                        log(f"augmentation {v} FAILED:\n{traceback.format_exc()}")
+                        record_failure(lab, f"augmentation {v}")
                         return False
-        lab.aug.release()
         return True
 
     lab.report("stage 7a (augmentation: which sounds)")
@@ -1616,17 +1636,23 @@ def write_report(lab):
     for key, label in STAGE_LABELS:
         for n in c.get(key, {}).get("options", c.get(key, {}).get("ranked", [])):
             stage_of.setdefault(n, label)
+    for n in os.listdir(lab.root):
+        if "_gapfill_" in n:  # only first-round experiments keep the "fill" recipe
+            stage_of.setdefault(n, "1 first round")
     rows = []
     for n in sorted(os.listdir(lab.root)):
         d = lab.dir(n)
         if not os.path.isdir(d) or not os.path.exists(os.path.join(d, "spec.json")):
             continue
-        best = None
-        for f in os.listdir(d):
-            if f.startswith("results_") and f.endswith(".json"):
-                r = lab.jload(os.path.join(d, f))
-                if r and r.get("seeds") == lab.seeds and r["rule"] != FRUITPUNCH_RULE:
-                    if best is None or r["finished"] >= best["finished"]:
+        best, spec = None, lab.spec(n)
+        own = lab.jload(os.path.join(d, f"results_{rule_key(lab.rule_for(spec))}.json")) if spec else None
+        if own and own.get("seeds") == lab.seeds:
+            best = own  # scored with the rule its stage used
+        else:
+            for f in os.listdir(d):
+                if f.startswith("results_") and f.endswith(".json"):
+                    r = lab.jload(os.path.join(d, f))
+                    if r and r.get("seeds") == lab.seeds and (best is None or r["finished"] >= best["finished"]):
                         best = r
         if best:
             rows.append(best)
@@ -1753,7 +1779,8 @@ def main(argv=None):
                 if sid in lab.setups:
                     cfgs.append(json.load(open(os.path.join(lab.setups[sid], "config.json"))))
             for cfg in cfgs:  # whole-day fingerprints of every training day (most exist already)
-                ex.cmd_embed(a, pools, w, cfg)
+                safe(f"embedding the days of {cfg.get('name') or cfg.get('letter')}", ex.cmd_embed, a, pools, w, cfg,
+                     lab=lab)
             try:
                 cmd_all(lab)
             except SystemExit:

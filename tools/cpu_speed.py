@@ -58,32 +58,31 @@ def embed_pieces(aves, y, piece_frames=470, ctx_frames=32, batch=8):
         a, b = max(0, f0 - ctx_frames), min(n, f1 + ctx_frames + 1)
         pieces.append((f0, f1, a, b))
     out = [None] * len(pieces)
-    full = [i for i, p in enumerate(pieces) if p[3] - p[2] == pieces[0][3] - pieces[0][2]]
-    rest = [i for i in range(len(pieces)) if i not in full]
+    by_len = {}  # pieces of the same length go through AVES together (the first and last are shorter)
+    for i, p in enumerate(pieces):
+        by_len.setdefault(p[3] - p[2], []).append(i)
     with torch.inference_mode():
-        for k in range(0, len(full), batch):
-            idx = full[k:k + batch]
-            x = torch.stack([y[pieces[i][2] * HOP:pieces[i][3] * HOP] for i in idx])
-            e = aves(x)
-            for j, i in enumerate(idx):
-                f0, f1, a, _ = pieces[i]
-                out[i] = e[j, f0 - a:f1 - a]
-        for i in rest:
-            f0, f1, a, b = pieces[i]
-            e = aves(y[a * HOP:b * HOP].view(1, -1))[0]
-            out[i] = e[f0 - a:f1 - a]
+        for same in by_len.values():
+            for k in range(0, len(same), batch):
+                idx = same[k:k + batch]
+                x = torch.stack([y[pieces[i][2] * HOP:pieces[i][3] * HOP] for i in idx])
+                e = aves(x)
+                for j, i in enumerate(idx):
+                    f0, f1, a, _ = pieces[i]
+                    out[i] = e[j, f0 - a:f1 - a]
     return unit(torch.cat(out).float())
 
 
 def _worker(args):
-    """One of several side-by-side processes: embed the excerpt, return seconds."""
-    path, threads = args
+    """One of several side-by-side processes: load AVES, wait for the others, embed the excerpt."""
+    path, threads, barrier = args
     import numpy as np
     import torch
     torch.set_num_threads(threads)
     import fp_replica
     y = torch.from_numpy(np.load(path))
     e = fp_replica.Embedder("cpu")
+    barrier.wait()  # all start together, so they really compete for the cores
     t0 = time.time()
     e.whole_file(y)
     return time.time() - t0
@@ -166,8 +165,12 @@ def main(argv=None):
         def parallel():
             n_proc = max(1, n_logical // 4)
             t0 = time.time()
-            with mp.get_context("spawn").Pool(n_proc) as pool_:
-                secs = pool_.map(_worker, [(ex_path, 4)] * n_proc)
+            ctx = mp.get_context("spawn")
+            with ctx.Manager() as mgr, ctx.Pool(n_proc) as pool_:
+                barrier = mgr.Barrier(n_proc)
+                # a generous time limit, so a crashed process can't hang the test forever
+                limit = 600 + 20 * res["threads"][1]["s_per_24h"] * ex_hours / 24
+                secs = pool_.map_async(_worker, [(ex_path, 4, barrier)] * n_proc).get(timeout=limit)
             wall = time.time() - t0
             hours_done = n_proc * ex_hours
             res["parallel"] = {"processes": n_proc, "threads_each": 4, "wall_s": round(wall, 1),
