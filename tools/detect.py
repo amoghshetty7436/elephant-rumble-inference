@@ -14,10 +14,11 @@ Steps for each recording, each one timed:
   write     the Raven table
 
 Ways to run it faster, to compare:
-  --readers N         read and resample the next N recordings while AVES works (default 1;
+  --readers N         read and resample the next N recordings while AVES works (default 3;
                       0 = read each one only when it is needed)
-  --half              AVES in half precision (float16 on the GPU, bfloat16 on the CPU); the
-                      first recording is also run at full precision and both are compared
+  --half / --full     AVES in half precision (float16 on the GPU, bfloat16 on the CPU) or full;
+                      half is the default on the GPU. With half, the first recording is also
+                      run at full precision and both are compared
   --workers N         N recordings side by side in separate processes (CPU)
   --threads T         CPU threads per process (default: all cores / workers)
 
@@ -258,12 +259,16 @@ def main(argv=None):
     p.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     p.add_argument("--workers", type=int, default=1, help="recordings processed side by side")
     p.add_argument("--threads", type=int, default=0, help="CPU threads per process (0: all cores / workers)")
-    p.add_argument("--readers", type=int, default=1, help="recordings read ahead in the background (0: none)")
-    p.add_argument("--half", action="store_true", help="AVES in half precision (compared with full on the first file)")
+    p.add_argument("--readers", type=int, default=3, help="recordings read ahead in the background (0: none)")
+    p.add_argument("--half", action="store_true", default=None,
+                   help="AVES in half precision, compared with full on the first file (default on the GPU)")
+    p.add_argument("--full", dest="half", action="store_false", help="AVES in full precision")
     p.add_argument("--fake-embedder", action="store_true", help=argparse.SUPPRESS)
     a = p.parse_args(argv)
     import torch
     device = a.device if a.device != "auto" else ("cuda" if torch.cuda.is_available() else "cpu")
+    if a.half is None:
+        a.half = device == "cuda"  # identical alarms on the lab PC's RTX 4060, 3x faster AVES
     if device == "cuda" and a.workers > 1:
         sys.exit("--workers is for the CPU; on the GPU one process is fastest")
     if device == "cpu" and not a.threads:
