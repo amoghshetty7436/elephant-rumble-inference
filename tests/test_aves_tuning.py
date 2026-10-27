@@ -35,7 +35,7 @@ def test_untrained_options_give_aves_fingerprints(monkeypatch):
               at.tune("t", 3, rep(), "layers", n=2), at.tune("g", 3, rep(), "gradual", n=12)):
         m = at.make_tuned(t, 2, aves).eval()
         h = at.day_fingerprints(m, y, "cpu")
-        if t["method"] == "combo":  # the layer mix starts as an equal mix, not layer 12
+        if t["method"] == "combo":  # the layer mix starts mostly at layer 12, not exactly
             assert h.shape == want.shape
             continue
         assert h.shape == want.shape and float((h * want).sum(1).min()) > 0.999, t["name"]

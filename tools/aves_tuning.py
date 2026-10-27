@@ -81,6 +81,7 @@ LR_LORA = 1e-4
 LR_ADAPTER = 1e-4
 LR_BITFIT = 1e-4
 LR_MIX = 1e-3
+MIX_START_LAST = 4.0                 # layer-mix weights start as softmax([0, ..., 0, 4]): the last layer about 80%
 LORA_ALPHA = 16
 ADAPTER_DIM = 64
 GRADUAL_EVERY = 2                    # gradual unfreezing: one more layer every this many checks
@@ -247,7 +248,11 @@ def make_tuned(t, ctx, backbone, shared=False):
                     for p in L[i].parameters():
                         p.requires_grad_(True)
             mix = t["mix"]
-            self.mixw = nn.Parameter(torch.zeros(keep)) if mix == "wsum" or m == "combo" else None
+            self.mixw = None
+            if mix == "wsum" or m == "combo":  # starts at about 80% the last layer, close to what the classifier knows
+                w0 = torch.zeros(keep)
+                w0[-1] = MIX_START_LAST
+                self.mixw = nn.Parameter(w0)
             self.proj = nn.Linear(self.dim, 768) if self.dim != 768 else None
             self.head = ex.make_model(ctx)
             self.tuned_names = sorted(k for k, p in self.named_parameters() if p.requires_grad)
@@ -805,7 +810,7 @@ class TuneLab(st.Lab):
         if d:
             parent = self.spec(d["parent"])["tune"]
             m = make_tuned(parent, s["ctx"], self.backbone(parent["backbone"]))
-            st0 = {k: v.clone() for k, v in m.state_dict().items()}
+            st0 = {k: v.detach().cpu().clone() for k, v in m.state_dict().items()}  # AVES may sit on the GPU
             if d["kind"] == "ema":
                 sd = torch.load(os.path.join(self.dir(d["parent"]), f"model_seed{seed}.ema.pth"), map_location="cpu")
                 m.load_state_dict(sd, strict=False)
