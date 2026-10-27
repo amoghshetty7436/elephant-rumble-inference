@@ -60,11 +60,22 @@ def test_detect_tables_and_timing(tmp_path, workers):
     assert not [p for p in os.listdir(rec) if not p.endswith(".wav")]  # nothing written next to the audio
 
 
-def test_prefetch_off_gives_the_same_tables(tmp_path):
+def test_reading_ahead_gives_the_same_tables(tmp_path):
     final, _, _ = make_final(tmp_path)
-    rec = make_recordings(tmp_path / "rec", n=2, minutes=2)
-    for flag, name in (([], "a"), (["--no-prefetch"], "b")):
+    rec = make_recordings(tmp_path / "rec", n=4, minutes=2)
+    for flag, name in ((["--readers", "1"], "a"), (["--readers", "0"], "b"), (["--readers", "3"], "c")):
         detect.main([str(rec), "--final", str(final), "--out", str(tmp_path / name), "--device", "cpu",
                      "--threads", "1", "--fake-embedder", "--source", str(tmp_path)] + flag)
-    for i in range(2):
-        assert (tmp_path / "a" / f"day{i}.rumbles.txt").read_text() == (tmp_path / "b" / f"day{i}.rumbles.txt").read_text()
+    for i in range(4):
+        a = (tmp_path / "a" / f"day{i}.rumbles.txt").read_text()
+        assert a == (tmp_path / "b" / f"day{i}.rumbles.txt").read_text() == (tmp_path / "c" / f"day{i}.rumbles.txt").read_text()
+
+
+def test_half_precision_is_compared_with_full(tmp_path):
+    final, _, _ = make_final(tmp_path)
+    rec = make_recordings(tmp_path / "rec", n=2, minutes=2)
+    s = detect.main([str(rec), "--final", str(final), "--out", str(tmp_path / "o"), "--device", "cpu",
+                     "--threads", "1", "--fake-embedder", "--half", "--source", str(tmp_path)])
+    c = s["half_check"]
+    assert c and c["cosine_mean"] > 0.99 and c["alarms_half"] >= 0
+    assert "Half precision against full" in (tmp_path / "o" / "timing.md").read_text()

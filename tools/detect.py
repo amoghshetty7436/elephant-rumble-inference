@@ -14,7 +14,10 @@ Steps for each recording, each one timed:
   write     the Raven table
 
 Ways to run it faster, to compare:
-  --prefetch          read the next recording while AVES works on this one (default on)
+  --readers N         read and resample the next N recordings while AVES works (default 1;
+                      0 = read each one only when it is needed)
+  --half              AVES in half precision (float16 on the GPU, bfloat16 on the CPU); the
+                      first recording is also run at full precision and both are compared
   --workers N         N recordings side by side in separate processes (CPU)
   --threads T         CPU threads per process (default: all cores / workers)
 
@@ -77,17 +80,52 @@ def load_final(path):
 class Detector:
     """AVES + the final model + the alarm rule, loaded once per process."""
 
-    def __init__(self, final, device, threads, fake_embedder=False):
+    def __init__(self, final, device, threads, fake_embedder=False, half=False):
         import torch
         import experiments as ex
         if threads:
             torch.set_num_threads(threads)
         self.name, model_path, self.rule, self.cut = load_final(final)
-        self.ctx, self.device = ctx_of(self.name), device
+        self.ctx, self.device, self.half = ctx_of(self.name), device, half
+        self.checked_half = False
         self.embed = dc.FakeEmbedder() if fake_embedder else self._aves(device)
         m = ex.make_model(self.ctx)
         m.load_state_dict(torch.load(model_path, map_location="cpu"))
         self.model = m.eval().to(device)
+
+    def fingerprints(self, y, half):
+        import torch
+        if half:
+            dt = torch.float16 if self.device == "cuda" else torch.bfloat16
+            with torch.autocast(self.device, dtype=dt):
+                emb = self.embed.whole_file(y)
+        else:
+            emb = self.embed.whole_file(y)
+        if self.device == "cuda":
+            torch.cuda.synchronize()
+        # the study's fingerprints were stored as float16; round the same way
+        return emb.float().half().float()
+
+    def alarms(self, prob):
+        import improve as im
+        starts, ends, scores = im.alarms(prob, self.rule) if len(prob) else ([], [], [])
+        return [(a, b, s) for a, b, s in zip(starts, ends, scores) if s >= self.cut]
+
+    def compare_full(self, y, emb_half, kept_half):
+        """Fingerprints and alarms of half vs full precision on one recording."""
+        import experiments as ex
+        full = self.fingerprints(y, False)
+        n = min(full.shape[0], emb_half.shape[0])
+        cos = (full[:n] * emb_half[:n]).sum(1) / (full[:n].norm(dim=1) * emb_half[:n].norm(dim=1)).clamp_min(1e-12)
+        kept_full = self.alarms(ex.day_probs(self.model, full, self.ctx, self.device)) if n else []
+        same = len({(a, b) for a, b, _ in kept_full} & {(a, b) for a, b, _ in kept_half})
+        c = {"cosine_mean": round(float(cos.mean()), 5) if n else None,
+             "cosine_min": round(float(cos.min()), 5) if n else None,
+             "alarms_full": len(kept_full), "alarms_half": len(kept_half), "alarms_identical": same}
+        log(f"half precision vs full on the first recording: fingerprint similarity mean "
+            f"{c['cosine_mean']}, worst {c['cosine_min']}; alarms {c['alarms_half']} vs {c['alarms_full']}, "
+            f"{same} identical")
+        return c
 
     @staticmethod
     def _aves(device):
@@ -102,23 +140,19 @@ class Detector:
 
     def run(self, path, y, out_dir, w):
         """Everything after reading; returns ({step: seconds}, alarms kept)."""
-        import torch
         import experiments as ex
-        import improve as im
         t, t0 = {}, time.time()
-        emb = self.embed.whole_file(y)
-        if self.device == "cuda":
-            torch.cuda.synchronize()
-        # the study's fingerprints were stored as float16; round the same way
-        emb = emb.half().float()
+        emb = self.fingerprints(y, self.half)
         t["aves"] = time.time() - t0
         t0 = time.time()
         prob = ex.day_probs(self.model, emb, self.ctx, self.device) if emb.shape[0] else []
         t["classify"] = time.time() - t0
         t0 = time.time()
-        starts, ends, scores = im.alarms(prob, self.rule) if len(prob) else ([], [], [])
-        kept = [(a, b, s) for a, b, s in zip(starts, ends, scores) if s >= self.cut]
+        kept = self.alarms(prob)
         t["alarms"] = time.time() - t0
+        if self.half and not self.checked_half:
+            self.checked_half = True
+            self.half_check = self.compare_full(y, emb, kept)
         t0 = time.time()
         write_raven(w, os.path.join(out_dir, os.path.splitext(os.path.basename(path))[0] + ".rumbles.txt"),
                     path, kept)
@@ -142,17 +176,19 @@ def hours_of(path):
     return sf.info(path).duration / 3600
 
 
-def process_files(det, files, out_dir, w, prefetch, label=""):
-    """Run det over files in order; with prefetch, the next file is read while AVES works."""
+def process_files(det, files, out_dir, w, readers, label=""):
+    """Run det over files in order; with readers > 0, the next `readers` files are read and
+    resampled in background threads while AVES works."""
     rows = []
-    pool = ThreadPoolExecutor(1) if prefetch and len(files) > 1 else None
-    nxt = pool.submit(det.read, files[0]) if pool else None
+    pool = ThreadPoolExecutor(readers) if readers > 0 and len(files) > 1 else None
+    ahead = [pool.submit(det.read, f) for f in files[:readers + 1]] if pool else []
     for i, path in enumerate(files):
         t0 = time.time()
         if pool:
-            y, read_s = nxt.result()
-            if i + 1 < len(files):
-                nxt = pool.submit(det.read, files[i + 1])
+            y, read_s = ahead.pop(0).result()
+            j = i + readers + 1
+            if j < len(files):
+                ahead.append(pool.submit(det.read, files[j]))
         else:
             y, read_s = det.read(path)
         wait_s = time.time() - t0
@@ -169,10 +205,10 @@ def process_files(det, files, out_dir, w, prefetch, label=""):
 
 
 def _worker(args):
-    final, device, threads, files, out_dir, roots, prefetch, fake, k = args
+    final, device, threads, files, out_dir, roots, readers, fake, half, k = args
     w = dc.Writer(roots, [])
-    det = Detector(final, device, threads, fake)
-    return process_files(det, files, out_dir, w, prefetch, label=f"[worker {k}] ")
+    det = Detector(final, device, threads, fake, half)
+    return process_files(det, files, out_dir, w, readers, label=f"[worker {k}] "), getattr(det, "half_check", None)
 
 
 def summarize(rows, wall, a, device_name):
@@ -180,7 +216,7 @@ def summarize(rows, wall, a, device_name):
     per24 = {k: sum(r[k] for r in rows) / hours * 24 for k in STEPS + ("read_wait",)}
     s = {"files": len(rows), "audio_hours": round(hours, 2), "wall_s": round(wall, 1),
          "wall_s_per_24h": round(wall / hours * 24, 1), "device": device_name, "workers": a.workers,
-         "threads": a.threads, "prefetch": a.prefetch, "step_s_per_24h": {k: round(v, 2) for k, v in per24.items()},
+         "threads": a.threads, "readers": a.readers, "half": a.half, "step_s_per_24h": {k: round(v, 2) for k, v in per24.items()},
          "files_detail": rows}
     if rows:
         s["median_file_wall_s"] = round(statistics.median(r["wall"] for r in rows), 1)
@@ -192,13 +228,18 @@ def write_report(w, out_dir, s, det_info):
     lines = [f"# Detector timing: {s['files']} recording(s), {s['audio_hours']} h of audio", "",
              f"Model `{det_info['experiment']}`, rule {det_info['rule']}, cut-off {det_info['cut_off']}.",
              f"Device {s['device']}, {s['workers']} process(es), {s['threads'] or 'all'} thread(s) each, "
-             f"reading ahead {'on' if s['prefetch'] else 'off'}.", "",
+             f"{s['readers']} recording(s) read ahead, AVES in {'half' if s['half'] else 'full'} precision.", "",
              "| Step | Time per 24 h of audio |", "|---|---|"]
     for k in STEPS:
         lines.append(f"| {k} | {fmt_dur(st[k])} |")
     lines += [f"| waited for reading | {fmt_dur(st['read_wait'])} |", "",
               f"**Wall clock: {fmt_dur(s['wall_s'])} in all, {fmt_dur(s['wall_s_per_24h'])} per 24 h of audio.** "
               "With several processes, step times add up across processes, so they can exceed the wall clock.", ""]
+    c = s.get("half_check")
+    if c:
+        lines += [f"Half precision against full, on the first recording: fingerprint similarity {c['cosine_mean']} "
+                  f"(worst {c['cosine_min']}); {c['alarms_half']} alarms against {c['alarms_full']}, "
+                  f"{c['alarms_identical']} of them identical.", ""]
     with w.open(os.path.join(out_dir, "timing.md")) as f:
         f.write("\n".join(lines) + "\n")
     w.json(os.path.join(out_dir, "timing.json"), {**s, **det_info})
@@ -217,8 +258,8 @@ def main(argv=None):
     p.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     p.add_argument("--workers", type=int, default=1, help="recordings processed side by side")
     p.add_argument("--threads", type=int, default=0, help="CPU threads per process (0: all cores / workers)")
-    p.add_argument("--no-prefetch", dest="prefetch", action="store_false",
-                   help="read each recording only when the previous one is done")
+    p.add_argument("--readers", type=int, default=1, help="recordings read ahead in the background (0: none)")
+    p.add_argument("--half", action="store_true", help="AVES in half precision (compared with full on the first file)")
     p.add_argument("--fake-embedder", action="store_true", help=argparse.SUPPRESS)
     a = p.parse_args(argv)
     import torch
@@ -246,22 +287,26 @@ def main(argv=None):
     det_info = {"experiment": name, "model": model_path, "rule": rule, "cut_off": cut}
     dev_name = torch.cuda.get_device_name(0) if device == "cuda" else f"CPU ({os.cpu_count()} logical cores)"
     log(f"{len(files)} recording(s); model {name}; {dev_name}; {a.workers} process(es) x "
-        f"{a.threads or 'default'} thread(s); reading ahead {'on' if a.prefetch else 'off'}")
+        f"{a.threads or 'default'} thread(s); {a.readers} read ahead; {'half' if a.half else 'full'} precision")
     t0 = time.time()
     if a.workers <= 1:
-        det = Detector(a.final, device, a.threads, a.fake_embedder)
+        det = Detector(a.final, device, a.threads, a.fake_embedder, a.half)
         load_s = time.time() - t0
         log(f"models loaded in {load_s:.1f} s")
         t0 = time.time()
-        rows = process_files(det, files, out, w, a.prefetch)
+        rows = process_files(det, files, out, w, a.readers)
+        checks = [getattr(det, "half_check", None)]
     else:
         shares = [files[k::a.workers] for k in range(a.workers)]
-        jobs = [(a.final, device, a.threads, sh, out, [out], a.prefetch, a.fake_embedder, k)
+        jobs = [(a.final, device, a.threads, sh, out, [out], a.readers, a.fake_embedder, a.half, k)
                 for k, sh in enumerate(shares) if sh]
         with mp.get_context("spawn").Pool(len(jobs)) as pool:
-            rows = [r for part in pool.map(_worker, jobs) for r in part]
+            parts = pool.map(_worker, jobs)
+        rows = [r for part, _ in parts for r in part]
+        checks = [c for _, c in parts]
     wall = time.time() - t0
     s = summarize(rows, wall, a, dev_name)
+    s["half_check"] = next((c for c in checks if c), None)
     write_report(w, out, s, det_info)
     log(f"wrote {len(rows)} Raven table(s), timing.md and timing.json in {out}")
     return s
