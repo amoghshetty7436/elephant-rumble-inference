@@ -271,7 +271,7 @@ def main(argv=None):
     a.final = a.final or os.path.join(a.source, "Configurations", "_study", "final_detections", "final_model.json")
     if not os.path.exists(a.final):
         sys.exit(f"{a.final} not found: run tools\\study.py first, or give --final")
-    out = a.out or os.path.join(a.source, "Configurations", "_detect", time.strftime("%Y-%m-%d_%H%M"))
+    out = a.out or os.path.join(a.source, "Configurations", "_detect", time.strftime("%Y-%m-%d_%H%M%S"))
     forbidden = [dc.ORIGINAL_DATA]
     try:
         root = dc.find_dataset_root(a.source)
