@@ -370,8 +370,42 @@ def cmd_survey(a):
         w.writeheader()
         w.writerows(rows)
 
-    md = ["# Survey of the recordings", "", f"Made {time.strftime('%Y-%m-%d %H:%M')}.", ""]
-    timings = {}
+    timings, tmd = {}, []
+    if not a.no_timing:
+        det = Detector(a.model, fake=a.fake_embedder)
+        for sr in sorted({r["sr"] for r in rows if not r["error"]}):
+            ok = [r for r in rows if r["sr"] == sr and not r["error"] and r["hours"] > 0.5]
+            if not ok:
+                continue
+            pick = sorted(ok, key=lambda r: r["hours"])[len(ok) // 2]  # a typical-length file
+            log(f"timing one {sr} Hz file: {pick['path']}")
+            timings[sr] = time_one(det, pick["path"], a.out)
+            log(f"  {timings[sr]}")
+        tmd = ["## Measured on one file per sample rate", "",
+               "| Sample rate | File | Hours | Network read | Read speed | Resample | AVES | Classifier | Write to --out | Write locally |",
+               "|---|---|---|---|---|---|---|---|---|---|"]
+        for sr, t in timings.items():
+            tmd.append(f"| {sr} Hz | {os.path.basename(t['file'])} | {t['hours']:.1f} | {t['raw_read_s']:.1f} s "
+                      f"({t['mb']:.0f} MB) | {t['mb_per_s']:.0f} MB/s | {t['resample_s']:.1f} s | {t['aves_s']:.1f} s "
+                      f"| {t['classify_s']:.2f} s | {t['write_out_s'] * 1000:.0f} ms | {t['write_local_s'] * 1000:.0f} ms |")
+        tmd.append("")
+
+
+    def speeds(sr):
+        """Seconds per 24 h of audio at this sample rate: read + resample, AVES + classifier, writing."""
+        t = timings.get(sr)
+        if t:
+            k = 24 / t["hours"]
+            return (t["raw_read_s"] + t["resample_s"]) * k, (t["aves_s"] + t["classify_s"]) * k, t["write_out_s"] * k
+        # no timing: guess from 16-bit audio at ~100 MB/s and the measured AVES speed
+        return sr * 2 * 86400 / 100e6 + sr * 86400 / 40e6, AVES_S_PER_24H, 0.5
+
+    def per_day(sr):
+        read, aves, write = speeds(sr)
+        return max(read, aves) + write
+
+    md = ["# Survey of the recordings", "", f"Made {time.strftime('%Y-%m-%d %H:%M')}. "
+          "Estimated times assume reading + resampling overlaps with AVES (as `run` does).", ""]
     for root in sorted({r["root"] for r in rows}):
         rs = [r for r in rows if r["root"] == root]
         ok = [r for r in rs if not r["error"]]
@@ -392,57 +426,31 @@ def cmd_survey(a):
             md.append(f"- **{len(bad)} files could not be read** (listed in survey_files.csv, column error)")
         if short:
             md.append(f"- {len(short)} files are under 36 s long and will give no detections")
-        md += ["", "| Site | Files | Hours | Days | Sample rate | First file | Last file |", "|---|---|---|---|---|---|---|"]
+        md += ["", "| Site | Files | Hours | Days | Sample rate | Estimated time | First file | Last file |",
+               "|---|---|---|---|---|---|---|---|"]
         for s in sites:
             ss = [r for r in ok if r["site"] == s]
             h = sum(r["hours"] for r in ss)
+            t = sum(r["hours"] / 24 * per_day(r["sr"]) for r in ss)
             md.append(f"| {s} | {len(ss)} | {h:,.1f} | {h / 24:.1f} | {', '.join(str(x) for x in sorted({r['sr'] for r in ss}))} "
+                      f"| {fmt_dur(t)} "
                       f"| {os.path.basename(ss[0]['path'])} | {os.path.basename(ss[-1]['path'])} |")
         md.append("")
 
-    if not a.no_timing:
-        det = Detector(a.model, fake=a.fake_embedder)
-        for sr in sorted({r["sr"] for r in rows if not r["error"]}):
-            ok = [r for r in rows if r["sr"] == sr and not r["error"] and r["hours"] > 0.5]
-            if not ok:
-                continue
-            pick = sorted(ok, key=lambda r: r["hours"])[len(ok) // 2]  # a typical-length file
-            log(f"timing one {sr} Hz file: {pick['path']}")
-            timings[sr] = time_one(det, pick["path"], a.out)
-            log(f"  {timings[sr]}")
-        md += ["## Measured on one file per sample rate", "",
-               "| Sample rate | File | Hours | Network read | Read speed | Resample | AVES | Classifier | Write to --out | Write locally |",
-               "|---|---|---|---|---|---|---|---|---|---|"]
-        for sr, t in timings.items():
-            md.append(f"| {sr} Hz | {os.path.basename(t['file'])} | {t['hours']:.1f} | {t['raw_read_s']:.1f} s "
-                      f"({t['mb']:.0f} MB) | {t['mb_per_s']:.0f} MB/s | {t['resample_s']:.1f} s | {t['aves_s']:.1f} s "
-                      f"| {t['classify_s']:.2f} s | {t['write_out_s'] * 1000:.0f} ms | {t['write_local_s'] * 1000:.0f} ms |")
-        md.append("")
-
+    md += tmd
     md += ["## Estimated time for `run`", "",
            "Per 24 h of audio: reading + resampling happens in the background while AVES works on the "
            "previous file, so each file costs about the slower of the two, plus writing.", "",
            "| Folder | Hours | Read + resample per 24 h | AVES per 24 h | Estimate |", "|---|---|---|---|---|"]
     grand = 0.0
     for root in sorted({r["root"] for r in rows}):
-        tot, reads, aveses = 0.0, [], []
-        for sr in sorted({r["sr"] for r in rows if r["root"] == root and not r["error"]}):
-            h = sum(r["hours"] for r in rows if r["root"] == root and r["sr"] == sr and not r["error"])
-            t = timings.get(sr)
-            if t:
-                k = 24 / t["hours"]
-                read = (t["raw_read_s"] + t["resample_s"]) * k
-                aves = (t["aves_s"] + t["classify_s"]) * k
-                write = t["write_out_s"] * k
-            else:  # no timing: guess from 16-bit audio at ~100 MB/s and the measured AVES speed
-                read = sr * 2 * 86400 / 100e6 + sr * 86400 / 40e6
-                aves, write = AVES_S_PER_24H, 0.5
-            tot += h / 24 * (max(read, aves) + write)
-            reads.append(f"{fmt_dur(read)} ({sr} Hz)")
-            aveses.append(fmt_dur(aves))
+        ok = [r for r in rows if r["root"] == root and not r["error"]]
+        srs = sorted({r["sr"] for r in ok})
+        tot = sum(r["hours"] / 24 * per_day(r["sr"]) for r in ok)
         grand += tot
-        hours = sum(r["hours"] for r in rows if r["root"] == root and not r["error"])
-        md.append(f"| {root} | {hours:,.0f} | {', '.join(reads)} | {', '.join(aveses)} | **{fmt_dur(tot)}** |")
+        md.append(f"| {root} | {sum(r['hours'] for r in ok):,.0f} | "
+                  f"{', '.join(f'{fmt_dur(speeds(sr)[0])} ({sr} Hz)' for sr in srs)} | "
+                  f"{', '.join(fmt_dur(speeds(sr)[1]) for sr in srs)} | **{fmt_dur(tot)}** |")
     md += ["", f"**All folders: about {fmt_dur(grand)}** on this PC, run one after the other.",
            "" if timings else "(Guessed, not measured: run survey without --no-timing on the PC that will do the work.)"]
     with open(os.path.join(a.out, "survey.md"), "w", encoding="utf-8") as f:
