@@ -192,25 +192,35 @@ def by_out_folder(jobs):
 ################################################################################
 
 def cmd_run(a):
-    import numpy as np
     import improve as im
     im.keep_awake()
+    os.makedirs(a.out, exist_ok=True)
+    stdout, sys.stdout = sys.stdout, dc.Tee(os.path.join(a.out, "run_log.txt"))
+    try:
+        run(a)
+    finally:
+        sys.stdout.f.close()
+        sys.stdout = stdout
+
+
+def run(a):
+    import numpy as np
     files = find_audio(a.inputs)
     jobs = [(p, out_base(a.out, r, p)) for r, p in files]
     todo = [(p, b) for p, b in jobs if a.redo or not os.path.exists(dc.long_path(b + TABLE_SUFFIX))]
     log(f"{len(files)} recordings, {len(files) - len(todo)} already done, {len(todo)} to do; results in {a.out}")
     det = Detector(a.model, fake=a.fake_embedder)
     min_score = det.cut_off if a.min_score is None else a.min_score
-    os.makedirs(a.out, exist_ok=True)
+    info = {"experiment": det.name, "model": det.model_path, "rule": det.rule, "cut_off": det.cut_off,
+            "min_score_in_tables": min_score, "inputs": a.inputs, "machine": machine()}
     with open(os.path.join(a.out, "detector.json"), "w") as f:
-        json.dump({"experiment": det.name, "model": det.model_path, "rule": det.rule,
-                   "cut_off": det.cut_off, "min_score_in_tables": min_score, "inputs": a.inputs}, f, indent=1)
+        json.dump(info, f, indent=1)
     timing_path = os.path.join(a.out, "timings.csv")
     new = not os.path.exists(timing_path)
     tf = open(timing_path, "a", newline="")
     tw = csv.writer(tf)
     if new:
-        tw.writerow(["file", "hours", "read_resample_s", "waited_s", "aves_s", "classify_s", "write_s", "detections"])
+        tw.writerow(TIMING_COLUMNS)
     done_hours, t_start, failed = 0.0, time.time(), []
     total_hours = sum(audio_info(p)["hours"] for p, _ in todo) if a.estimate else 0.0
     left_in_folder = {d: sum(1 for _, b in todo if os.path.dirname(b) == d) for d in {os.path.dirname(b) for _, b in todo}}
@@ -228,6 +238,7 @@ def cmd_run(a):
         queue(i + a.prefetch)
         try:
             t0 = time.time()
+            sr = audio_info(src)["sr"]
             y, t_load = ahead.pop(i).result()
             waited = time.time() - t0
             hours = y.shape[0] / 500 / 3600
@@ -249,8 +260,9 @@ def cmd_run(a):
                 f.write(f"{time.strftime('%Y-%m-%d %H:%M')}\t{src}\t{e}\n")
             continue
         del y, emb
-        tw.writerow([src, f"{hours:.3f}", f"{t_load:.1f}", f"{waited:.1f}", f"{t2 - t1:.1f}", f"{t3 - t2:.2f}",
-                     f"{t4 - t3:.2f}", len(rows)])
+        tw.writerow([time.strftime("%Y-%m-%d %H:%M:%S"), site_of(src), src, sr, f"{hours:.4f}", len(prob),
+                     f"{t_load:.1f}", f"{waited:.1f}", f"{t2 - t1:.1f}", f"{t3 - t2:.2f}", f"{t4 - t3:.2f}",
+                     f"{t4 - t0:.1f}", len(rows), f"{float(prob.max()) if len(prob) else 0:.4f}"])
         tf.flush()
         done_hours += hours
         el = time.time() - t_start
@@ -264,10 +276,92 @@ def cmd_run(a):
         if left_in_folder[d] == 0:
             n = folder_table(d, by_out_folder(jobs)[d], det.rule, min_score)
             log(f"folder table {os.path.join(d, FOLDER_TABLE)}: {n} rumbles")
+            write_summary(a.out, jobs, info, min_score)
     pool.shutdown()
     tf.close()
     log(f"finished: {done_hours:.0f} h of audio in {fmt_dur(time.time() - t_start)}"
         + (f"; {len(failed)} failed, see failed.txt" if failed else ""))
+    missing = write_summary(a.out, jobs, info, min_score)
+    log(f"wrote {os.path.join(a.out, 'summary.md')}" +
+        (f"; WARNING {missing} recordings have no table yet, run the same command again" if missing else
+         f"; every one of the {len(jobs)} recordings has its table"))
+
+
+TIMING_COLUMNS = ["finished", "site", "file", "sample_rate", "hours", "frames", "read_resample_s", "waited_s",
+                  "aves_s", "classify_s", "write_s", "total_s", "detections", "max_prob"]
+
+
+def machine():
+    import platform
+    import torch
+    return {"computer": platform.node(), "python": platform.python_version(), "torch": torch.__version__,
+            "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "none (CPU)"}
+
+
+def write_summary(out, jobs, info, min_score):
+    """summary.md / summary.csv: per site, recordings, hours, rumbles and time taken, from timings.csv
+    (the latest line of each recording), and a check that every recording has its table and
+    probabilities. Returns how many recordings have no table."""
+    import numpy as np
+    last = {}
+    path = os.path.join(out, "timings.csv")
+    if os.path.exists(path):
+        for r in csv.DictReader(open(path)):
+            last[r["file"]] = r
+    sites, problems = {}, []
+    for src, base in jobs:
+        s = sites.setdefault(site_of(src), dict(files=0, done=0, hours=0.0, detections=0, seconds=0.0, aves=0.0))
+        s["files"] += 1
+        table, probs = dc.long_path(base + TABLE_SUFFIX), dc.long_path(base + PROBS_SUFFIX)
+        if not os.path.exists(table) or not os.path.exists(probs):
+            continue
+        s["done"] += 1
+        r = last.get(src)
+        s["detections"] += sum(1 for _ in open(table, encoding="utf-8")) - 1
+        if r:
+            s["hours"] += float(r["hours"])
+            s["seconds"] += float(r["total_s"])
+            s["aves"] += float(r["aves_s"])
+            n_probs = len(np.load(probs, mmap_mode="r"))
+            if n_probs != int(r["frames"]):
+                problems.append(f"{src}: {n_probs} frames saved, {r['frames']} computed")
+    rows = []
+    for name, s in sorted(sites.items()):
+        rows.append(dict(site=name, recordings=s["files"], done=s["done"], hours=round(s["hours"], 2),
+                         days=round(s["hours"] / 24, 2), rumbles=s["detections"],
+                         rumbles_per_day=round(s["detections"] / (s["hours"] / 24), 1) if s["hours"] else "",
+                         time=fmt_dur(s["seconds"]), seconds=round(s["seconds"]),
+                         s_per_24h=round(s["seconds"] / s["hours"] * 24, 1) if s["hours"] else "",
+                         aves_s_per_24h=round(s["aves"] / s["hours"] * 24, 1) if s["hours"] else ""))
+    if not rows:
+        return 0
+    with open(os.path.join(out, "summary.csv"), "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    tot = {k: sum(r[k] for r in rows) for k in ("recordings", "done", "hours", "rumbles", "seconds")}
+    missing = tot["recordings"] - tot["done"]
+    m = machine()
+    md = ["# Detection summary", "", f"Updated {time.strftime('%Y-%m-%d %H:%M')} on {m['computer']} "
+          f"({m['gpu']}, torch {m['torch']}, Python {m['python']}).", "",
+          f"- Model: {info['experiment']}, rule {info['rule']}; tables keep detections scoring >= {min_score:.4f} "
+          f"(validated cut-off {info['cut_off']:.4f})",
+          f"- **{tot['done']} of {tot['recordings']} recordings done**, {tot['hours']:,.1f} h of audio "
+          f"({tot['hours'] / 24:,.1f} days), **{tot['rumbles']:,} rumbles**",
+          f"- Time: {fmt_dur(tot['seconds'])} in total"
+          + (f", {tot['seconds'] / tot['hours'] * 24:.0f} s per 24 h of audio" if tot["hours"] else ""),
+          f"- Check: {'every finished recording has a Raven table and probabilities that match' if not problems else f'{len(problems)} PROBLEMS, listed below'}"
+          + (f"; {missing} recordings not done yet (or failed, see failed.txt)" if missing else ""), "",
+          "| Site | Recordings | Done | Hours | Days | Rumbles | Per day | Time | s per 24 h | AVES s per 24 h |",
+          "|---|---|---|---|---|---|---|---|---|---|"]
+    md += [f"| {r['site']} | {r['recordings']} | {r['done']} | {r['hours']:,.1f} | {r['days']:.1f} | {r['rumbles']:,} "
+           f"| {r['rumbles_per_day']} | {r['time']} | {r['s_per_24h']} | {r['aves_s_per_24h']} |" for r in rows]
+    if problems:
+        md += ["", "## Problems", ""] + [f"- {p}" for p in problems]
+    md += ["", "Per recording: timings.csv. Everything printed: run_log.txt. Model and settings: detector.json."]
+    with open(os.path.join(out, "summary.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(md) + "\n")
+    return missing
 
 
 def cmd_table(a):
@@ -298,7 +392,8 @@ def cmd_table(a):
     info["min_score_in_tables"] = min_score
     with open(os.path.join(a.out, "detector.json"), "w") as f:
         json.dump(info, f, indent=1)
-    log(f"rewrote {len(jobs)} tables with Score >= {min_score}: {n} rumbles")
+    write_summary(a.out, jobs, info, min_score)
+    log(f"rewrote {len(jobs)} tables with Score >= {min_score}: {n} rumbles; summary.md updated")
 
 
 ################################################################################

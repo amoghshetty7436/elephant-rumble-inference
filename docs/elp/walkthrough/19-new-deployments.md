@@ -141,7 +141,7 @@ notepad "$out\_survey\survey.md"
 One after the other, in one go (leave the PC plugged in; the script keeps Windows awake, but pause Windows Update):
 
 ```
-python tools\detect.py run $nn --out "$out\nn_202306_jun_dep17" 2>&1 | Tee-Object -Append "$out\nn_run_log.txt" ; python tools\detect.py run $dz --out "$out\dz_202512_dec_dep10_part2" 2>&1 | Tee-Object -Append "$out\dz_run_log.txt"
+python tools\detect.py run $nn --out "$out\nn_202306_jun_dep17" ; python tools\detect.py run $dz --out "$out\dz_202512_dec_dep10_part2"
 ```
 
 It prints one line per recording with the time per 24 h and the time left. If it stops (crash, restart), **run the same line again**: it skips the recordings that already have a table.
@@ -153,8 +153,10 @@ What you get, mirroring the sound folders:
 | `<recording>.rumbles.txt` | Raven table of that recording's rumbles |
 | `<recording>.probs.npy` | The rumble probability of every 0.64 s; lets you change the cut-off later in seconds |
 | `_all_rumbles.txt` (one per folder) | One Raven table for the whole folder, recordings one after another |
-| `detector.json` | Which model, rule and cut-off made these tables |
-| `timings.csv` | Time spent on each recording |
+| `summary.md` / `summary.csv` | Per site: recordings done, hours, rumbles (total and per day), time taken, seconds per 24 h of audio. Also checks that every finished recording has its table and matching probabilities. Updated after every site and at the end |
+| `timings.csv` | One line per recording: when it finished, site, sample rate, hours, read + resample, waiting for the network, AVES, classifier and writing times, total time, number of rumbles, highest probability |
+| `run_log.txt` | Everything printed on screen, for every run (appended) |
+| `detector.json` | Which model, rule and cut-off made these tables, and the PC, GPU, Python and PyTorch versions |
 | `failed.txt` | Any recording that couldn't be read (the run carries on) |
 
 ### Changing the cut-off afterwards

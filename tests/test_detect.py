@@ -67,7 +67,13 @@ def test_survey_run_table(setup):
         assert {r["Begin File"] for r in folder} <= {"dzan01a_20251201_000000.wav", "dzan01a_20251202_000000.wav"}
         assert all(float(r["Begin Time (s)"]) <= float(r["End Time (s)"]) for r in folder)
     timings = list(csv.DictReader(open(out / "timings.csv")))
-    assert len(timings) == 6
+    assert len(timings) == 6 and {t["sample_rate"] for t in timings} == {"32000", "8000"}
+    assert {t["site"] for t in timings} == {"dzan01a", "dzan02b", "nn06a"}
+    summary = (out / "summary.md").read_text()
+    assert "**6 of 6 recordings done**" in summary and "PROBLEMS" not in summary
+    assert len(list(csv.DictReader(open(out / "summary.csv")))) == 3
+    assert "[6/6]" in (out / "run_log.txt").read_text()
+    assert json.load(open(out / "detector.json"))["machine"]["torch"]
 
     # a rerun skips everything; table rewrites with a stricter cut-off
     detect.main(["run", str(data)] + base)
