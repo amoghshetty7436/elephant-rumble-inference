@@ -380,7 +380,8 @@ def cmd_survey(a):
         md += [f"## {root}", "",
                f"- **{len(rs)} recordings**, {len(sites)} sites, **{hours:,.0f} hours** ({hours / 24:,.1f} recording-days), "
                f"{sum(r['bytes'] for r in rs) / 1e9:,.1f} GB",
-               f"- sample rates: {', '.join(f'{sr} Hz x {sum(1 for r in ok if r['sr'] == sr)}' for sr in sorted({r['sr'] for r in ok}))}",
+               "- sample rates: " + ", ".join(f"{sr} Hz x {sum(1 for r in ok if r['sr'] == sr)}"
+                                              for sr in sorted({r["sr"] for r in ok})),
                f"- formats: {', '.join(sorted({r['format'] for r in ok}))}; channels: {sorted({r['channels'] for r in ok})}",
                f"- file length: median {statistics.median([r['hours'] for r in ok]):.2f} h, "
                f"shortest {min(r['hours'] for r in ok):.2f} h, longest {max(r['hours'] for r in ok):.2f} h"
