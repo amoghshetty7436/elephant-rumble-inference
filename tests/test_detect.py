@@ -91,15 +91,17 @@ def test_out_inside_input_is_refused(setup):
         detect.main(["run", str(data), "--out", str(data / "results"), "--model", str(model), "--fake-embedder"])
 
 
-def test_watchdog_stops_a_stalled_run():
+def test_watchdog_stops_a_stalled_run(tmp_path):
     import time
     codes = []
-    wd = detect.Watchdog(0.4, exit=codes.append)
+    dump = tmp_path / "stall_traceback.txt"
+    wd = detect.Watchdog(0.4, exit=codes.append, dump=str(dump))
     wd.beat("reading x.wav")
     time.sleep(0.3)
     wd.beat("running AVES")  # progress: no stop yet
     assert not codes
     time.sleep(1.0)
     assert codes == [detect.STALLED]
+    assert "stalled while running AVES" in dump.read_text() and "test_watchdog" in dump.read_text()
     wd.stop.set()
     assert detect.Watchdog(0).thread.is_alive() is False  # 0 = no watchdog

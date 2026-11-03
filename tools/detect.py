@@ -196,9 +196,9 @@ class Watchdog:
     """Ends the process (exit code STALLED) when nothing has moved on for `limit` seconds, e.g. a
     read from the network drive that never returns, so a PowerShell loop can start it again."""
 
-    def __init__(self, limit, exit=os._exit):
+    def __init__(self, limit, exit=os._exit, dump=None):
         import threading
-        self.limit, self.exit = limit, exit
+        self.limit, self.exit, self.dump = limit, exit, dump
         self.last, self.what = time.time(), "starting"
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self.watch, daemon=True)
@@ -214,6 +214,13 @@ class Watchdog:
                 log(f"STALLED: no progress for {fmt_dur(time.time() - self.last)} while {self.what}. "
                     f"Stopping (exit code {STALLED}) so it can be started again; finished files are kept.")
                 sys.stdout.flush()
+                if self.dump:  # where every thread is stuck, for finding the cause
+                    import faulthandler
+                    with open(self.dump, "a") as f:
+                        f.write(f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} stalled while {self.what}\n")
+                        f.flush()
+                        faulthandler.dump_traceback(file=f, all_threads=True)
+                    log(f"where each thread was stuck: {self.dump}")
                 self.exit(STALLED)
                 return
 
@@ -240,7 +247,7 @@ def cmd_run(a):
     no_quick_edit()
     os.makedirs(a.out, exist_ok=True)
     stdout, sys.stdout = sys.stdout, dc.Tee(os.path.join(a.out, "run_log.txt"))
-    a.watchdog = Watchdog(a.stall_minutes * 60)
+    a.watchdog = Watchdog(a.stall_minutes * 60, dump=os.path.join(a.out, "stall_traceback.txt"))
     try:
         run(a)
     finally:
