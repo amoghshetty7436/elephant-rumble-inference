@@ -46,6 +46,9 @@ def test_round2_end_to_end(source, monkeypatch):  # noqa: F811
     for k, v in dict(VER_MAX_EPOCHS=2, VER_PATIENCE=1, VER_NEG_PER_DAY=10, VER_POS_PER_DAY=10).items():
         monkeypatch.setattr(cd, k, v)
     monkeypatch.setattr(r2, "NEG_PER_STAGE", 10)
+    for k, v in dict(CHECK_EVERY=8, PATIENCE=1, MAX_CHECKS=2, RUMBLE_CLIPS_PER_DAY=2, RANDOM_CLIPS_PER_DAY=1,
+                     NOISE_CLIPS_MAX=4, BATCH=2).items():
+        monkeypatch.setattr(r2.dft, k, v)
     cd.main(["--source", str(source), "--seeds", "2", "--fake-embedder", "--only", "m4", "m6"])
     out = source / "Configurations"
     before = snapshot(source)
@@ -55,6 +58,8 @@ def test_round2_end_to_end(source, monkeypatch):  # noqa: F811
     for s in r2.STAGES:
         r = json.load(open(root / s / "results.json"))
         assert r["summary"]["runs"] == (1 if s.endswith("_ens") else 2)
+    assert json.load(open(root / "dasheng06b" / "training.json"))["dim"] == 1280
+    assert len(json.load(open(root / "dasheng_ft" / "training.json"))["runs"]) == 2
     checked = sorted(os.listdir(root / "checked"))
     assert len(checked) == r2.CHECKED_STAGES * len(r2.ARCHS) * 2
     md = (root / "round2.md").read_text()
@@ -65,8 +70,9 @@ def test_round2_end_to_end(source, monkeypatch):  # noqa: F811
     a = json.load(open(root / "aves" / "results.json"))["summary"]["score"]
     # only round 2's folder was written
     after = snapshot(source)
-    assert not [p for p, m in before.items() if after.get(p) != m and not p.startswith(str(root))]
-    assert not [p for p in after if p not in before and not p.startswith(str(root))]
+    mine = (str(root), str(out / "_embedding_cache_dasheng06b"))
+    assert not [p for p, m in before.items() if after.get(p) != m and not p.startswith(mine)]
+    assert not [p for p in after if p not in before and not p.startswith(mine)]
     # resuming retrains nothing and rescoring the tests reuses them
     t = os.path.getmtime(root / "fusion" / "model_seed0.pth")
     c = os.path.getmtime(root / "checkers" / "resnet18_seed0.pth")
@@ -74,3 +80,26 @@ def test_round2_end_to_end(source, monkeypatch):  # noqa: F811
     assert os.path.getmtime(root / "fusion" / "model_seed0.pth") == t
     assert os.path.getmtime(root / "checkers" / "resnet18_seed0.pth") == c
     assert a == json.load(open(root / "aves" / "results.json"))["summary"]["score"]
+
+
+def test_lora_starts_as_the_frozen_encoder_and_trains_only_adapters():
+    from dasheng.pretrained.pretrained import Dasheng
+    torch.manual_seed(0)
+    enc = Dasheng(embed_dim=64, depth=2, num_heads=4).eval()
+    x = torch.randn(2, r2.dft.CLIP * r2.dft.STEP)
+    before = enc(x)
+    r2.dft.add_lora(enc)
+    enc.eval()
+    assert torch.allclose(enc(x), before, atol=1e-5)  # B starts at zero
+    names = [n for n, p in enc.named_parameters() if p.requires_grad]
+    assert names and all("lora_" in n for n in names)
+    m = r2.dft.make_ft(8, fake=True).eval()
+    assert m(x).shape == (2, r2.dft.CLIP, 2)
+
+
+def test_ft_inference_covers_every_step_once():
+    m = r2.dft.make_ft(8, fake=True).eval()
+    for n in (50, 128, 300, 1000):
+        y = np.random.default_rng(n).normal(size=n * r2.dft.STEP + 100).astype(np.float32) * 0.01
+        t = r2.dft.day_tokens(m, y, n, "cpu")
+        assert t.shape == (n, m.dim) and torch.allclose(t.norm(dim=1), torch.ones(n), atol=1e-3)

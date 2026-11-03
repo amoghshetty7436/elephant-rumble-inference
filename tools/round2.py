@@ -11,8 +11,12 @@ First stages (a score every 0.64 s, then an alarm rule):
   dasheng       round 1's Dasheng model (5 runs)
   fusion        one classifier reading AVES and Dasheng fingerprints side by side (5 new runs)
   late          run i = mean of AVES run i and Dasheng run i
+  dasheng06b    Dasheng 0.6B (600 M weights, frozen; ~7x Dasheng-base's compute; its fingerprints
+                take ~350 MB per recorded day on disk), the final model's classifier (5 runs)
+  dasheng_ft    Dasheng-base fine-tuned with LoRA together with the classifier (dasheng_ft.py,
+                5 runs; inference ~1.3x frozen Dasheng)
   *_ens         all runs averaged into one model (aves_ens, dasheng_ens, fusion_ens,
-                late_ens = 10 heads). The heads are tiny, so this costs almost nothing at
+                late_ens = 10 heads, ...). The heads are tiny, so this costs almost nothing at
                 inference; the encoders run once either way.
 
 Double-checkers (round 1's model 4, generalised): every alarm of a first stage gets a second
@@ -27,6 +31,7 @@ On the lab PC, after candidates.py (needs its m6_dasheng and, if present, m4 fol
 
   python tools\\round2.py                       # everything; rerun to resume
   python tools\\round2.py --archs resnet18      # fewer checkers, faster
+  python tools\\round2.py --skip dasheng06b     # without the big encoder (disk, time)
   python tools\\round2.py final                 # the tests for whatever has finished
 
 Results: <out>\\_round2\\round2.md (validation) and round2_final.md (tests); progress.txt.
@@ -44,6 +49,7 @@ import traceback
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import candidates as cd  # noqa: E402
+import dasheng_ft as dft  # noqa: E402
 import dataset_configs as dc  # noqa: E402
 import experiments as ex  # noqa: E402
 import improve as im  # noqa: E402
@@ -51,8 +57,9 @@ import study as st  # noqa: E402
 from dataset_configs import log, fmt_dur, Day  # noqa: E402
 
 ROOT_NAME = "_round2"
-BASES = ["aves", "dasheng", "fusion"]
-STAGES = ["aves", "dasheng", "fusion", "late", "aves_ens", "dasheng_ens", "fusion_ens", "late_ens"]
+TRAINED = ["fusion", "dasheng06b", "dasheng_ft"]   # first stages trained here (can be skipped with --skip)
+STAGES = ["aves", "dasheng", "fusion", "late", "dasheng06b", "dasheng_ft",
+          "aves_ens", "dasheng_ens", "fusion_ens", "late_ens", "dasheng06b_ens", "dasheng_ft_ens"]
 ARCHS = ["resnet18", "efficientnet_b0", "convnext_tiny"]
 ARCH_LR = {"resnet18": 3e-4, "efficientnet_b0": 3e-4, "convnext_tiny": 1e-4}
 CHECKED_STAGES = 3            # the checkers are tried on this many of the best first stages
@@ -63,8 +70,12 @@ TITLES = {"aves": "Final model (AVES), the reference", "dasheng": "Dasheng (roun
           "fusion": "AVES + Dasheng fingerprints, one classifier", "late": "AVES and Dasheng scores averaged",
           "aves_ens": "AVES, 5 runs averaged", "dasheng_ens": "Dasheng, 5 runs averaged",
           "fusion_ens": "AVES + Dasheng fingerprints, 5 runs averaged",
-          "late_ens": "AVES and Dasheng, all 10 runs averaged"}
-ENCODERS_OF = {"aves": "AVES", "dasheng": "Dasheng", "fusion": "AVES + Dasheng", "late": "AVES + Dasheng"}
+          "late_ens": "AVES and Dasheng, all 10 runs averaged",
+          "dasheng06b": "Dasheng 0.6B (600 M weights, frozen)", "dasheng06b_ens": "Dasheng 0.6B, 5 runs averaged",
+          "dasheng_ft": "Dasheng fine-tuned with LoRA", "dasheng_ft_ens": "Dasheng fine-tuned, 5 runs averaged"}
+ENCODERS_OF = {"aves": "AVES", "dasheng": "Dasheng", "fusion": "AVES + Dasheng", "late": "AVES + Dasheng",
+               "dasheng06b": "Dasheng 0.6B (about 7x Dasheng's compute)",
+               "dasheng_ft": "Dasheng fine-tuned (about 1.3x Dasheng: overlapping blocks)"}
 
 
 def fit(x, n):
@@ -209,6 +220,7 @@ class R2(cd.CandLab):
         self.cand = self.root                                   # round 1's folder
         self.root = os.path.join(a.out, ROOT_NAME)
         self.archs = a.archs
+        self.skip = set(a.skip or [])
         self.cuts = CutStore(self, os.path.join(self.root, "cuts"))
         self._probs = {}
         self._models = {}
@@ -219,6 +231,7 @@ class R2(cd.CandLab):
         self.rules = {"aves": self.final_rule, "dasheng": r6["rule"]}
         self.src = {"aves": cd.Source(a.cache), "dasheng": cd.Source(self.encoder_cache("dasheng"))}
         self.src["fusion"] = FusionSource(self.src["aves"], self.src["dasheng"])
+        self.src["dasheng06b"] = cd.Source(self.encoder_cache("dasheng06b"), dim=cd.ENCODERS["dasheng06b"]["dim"])
 
     def report(self, now):
         try:
@@ -237,8 +250,11 @@ class R2(cd.CandLab):
         ctx = self.base_spec["ctx"]
         if base == "aves":
             ms = self.lab.models(self.final_name)
+        elif base == "dasheng_ft":
+            ms = [dft.load_ft(os.path.join(self.dir("dasheng_ft"), f"model_seed{s}.pth"), ctx, self.a.fake_embedder,
+                              self.device) for s in self.seeds]
         else:
-            folder = os.path.join(self.cand, "m6_dasheng") if base == "dasheng" else self.dir("fusion")
+            folder = os.path.join(self.cand, "m6_dasheng") if base == "dasheng" else self.dir(base)
             ms = []
             for s in self.seeds:
                 m = cd.make_ctx_model(self.src[base].dim, ctx)
@@ -247,30 +263,58 @@ class R2(cd.CandLab):
         self._models[base] = ms
         return ms
 
-    def train_fusion(self):
-        if self.trained("fusion"):
+    def train_base(self, base):
+        """The final model's classifier and recipe on other fingerprints (fusion, Dasheng 0.6B)."""
+        if self.trained(base):
             return
-        src = self.src["fusion"]
-        self.report("fusion: building the training set (AVES + Dasheng fingerprints)")
+        if base == "dasheng06b":
+            self.report("dasheng06b: fingerprints of every recording")
+            cd.cmd_embed(self, "dasheng06b")
+        src = self.src[base]
+        self.report(f"{base}: building the training set")
         t0 = time.time()
         bank, win, y, ho_w, ho_y, info = cd.build_sets(self, self.base_spec, src)
         runs = []
-        with self.w.open(os.path.join(self.dir("fusion"), "training_log.txt"), "a") as logf:
+        with self.w.open(os.path.join(self.dir(base), "training_log.txt"), "a") as logf:
             for seed in self.seeds:
-                path = os.path.join(self.dir("fusion"), f"model_seed{seed}.pth")
+                path = os.path.join(self.dir(base), f"model_seed{seed}.pth")
                 if os.path.exists(path) and os.path.exists(path + ".json"):
                     runs.append(json.load(open(path + ".json")))
                     continue
-                self.report(f"fusion: training run {seed}")
+                self.report(f"{base}: training run {seed}")
                 m, ri = cd.train_windows(bank, win, y, ho_w, ho_y, lambda: cd.make_ctx_model(src.dim, self.base_spec["ctx"]),
                                          seed, logf, self.device)
                 st.tsave(self.w, path, m.state_dict())
                 st.wjson(self.w, path + ".json", ri)
                 runs.append(ri)
-                log(f"fusion run {seed}: {ri}")
-        st.wjson(self.w, os.path.join(self.dir("fusion"), "training.json"),
-                 {"model": "fusion", "dim": src.dim, "data": info, "runs": runs,
+                log(f"{base} run {seed}: {ri}")
+        st.wjson(self.w, os.path.join(self.dir(base), "training.json"),
+                 {"model": base, "dim": src.dim, "data": info, "runs": runs,
                   "train_minutes": round((time.time() - t0) / 60, 1)})
+
+    def train_ft(self):
+        """Dasheng-base fine-tuned with LoRA together with the classifier (dasheng_ft.py)."""
+        if self.trained("dasheng_ft"):
+            return
+        t0 = time.time()
+        folder = self.dir("dasheng_ft")
+        dft.build_clips(self, os.path.join(folder, "clips"))
+        runs = []
+        with self.w.open(os.path.join(folder, "training_log.txt"), "a") as logf:
+            for seed in self.seeds:
+                path = os.path.join(folder, f"model_seed{seed}.pth")
+                if os.path.exists(path) and os.path.exists(path + ".json"):
+                    runs.append(json.load(open(path + ".json")))
+                    continue
+                self.report(f"dasheng_ft: fine-tuning run {seed}")
+                state, ri = dft.train_ft(os.path.join(folder, "clips"), self.base_spec["ctx"], seed, logf, self.device,
+                                         self.a.fake_embedder)
+                st.tsave(self.w, path, state)
+                st.wjson(self.w, path + ".json", ri)
+                runs.append(ri)
+                log(f"dasheng_ft run {seed}: {ri}")
+        st.wjson(self.w, os.path.join(folder, "training.json"),
+                 {"model": "dasheng_ft", "runs": runs, "train_minutes": round((time.time() - t0) / 60, 1)})
 
     # ---- scores per step, events ---------------------------------------------------------
     def split_keys(self, split):
@@ -288,8 +332,14 @@ class R2(cd.CandLab):
         if key not in self._probs:
             ms = self.base_models(base)
             out = [dict() for _ in ms]
-            for p, k in self.split_keys(split):
+            for i, (p, k) in enumerate(self.split_keys(split)):
                 n = Day(self.a.cache, p, k).n
+                if base == "dasheng_ft":
+                    if i % 10 == 0:
+                        self.report(f"dasheng_ft: {split} recording {i + 1}")
+                    for j, pr in enumerate(dft.day_probs(ms, self.pools[p].sounds[k], n, self.base_spec["ctx"], self.device)):
+                        out[j][(p, k)] = fit(pr, n)
+                    continue
                 x = self.src[base].day(p, k).whole()
                 for i, m in enumerate(ms):
                     out[i][(p, k)] = fit(ex.day_probs(m, x, self.base_spec["ctx"], self.device), n)
@@ -598,9 +648,16 @@ def write_report(lab):
 
 def cmd_all(lab):
     t0 = time.time()
-    safe(lab, "fusion training", lab.train_fusion)
+    for base in TRAINED:
+        if base in lab.skip:
+            continue
+        if base == "dasheng_ft":
+            safe(lab, "dasheng_ft training", lab.train_ft)
+        else:
+            safe(lab, f"{base} training", lab.train_base, base)
     for s in STAGES:
-        if s.replace("_ens", "") == "fusion" and not lab.trained("fusion"):
+        b = s.replace("_ens", "")
+        if b in TRAINED and (b in lab.skip or not lab.trained(b)):
             continue
         safe(lab, f"{s} validation", lab.evaluate_stage, s)
         write_report(lab)
@@ -671,6 +728,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("step", nargs="?", default="all", choices=["all", "report", "final"])
     p.add_argument("--archs", nargs="+", default=ARCHS, choices=ARCHS, help="checker architectures to train and try")
+    p.add_argument("--skip", nargs="+", choices=TRAINED, help="first stages not to train (the slowest: dasheng06b)")
     p.add_argument("--source", default=dc.DEFAULT_SOURCE, help=f"the Datasets copy (default {dc.DEFAULT_SOURCE})")
     p.add_argument("--out", help="the Configurations folder (default <source>\\Configurations)")
     p.add_argument("--cache", help="the AVES cache (default <out>\\_embedding_cache)")
@@ -682,7 +740,7 @@ def main(argv=None):
     a.cache = a.cache or os.path.join(a.out, "_embedding_cache")
     im.keep_awake()
     root = dc.find_dataset_root(a.source)
-    w = dc.Writer([os.path.join(a.out, ROOT_NAME)],
+    w = dc.Writer([os.path.join(a.out, ROOT_NAME), os.path.join(a.out, "_embedding_cache_dasheng06b")],
                   [dc.ORIGINAL_DATA, os.path.join(root, "Training"), os.path.join(root, "Testing")])
     w.makedirs(os.path.join(a.out, ROOT_NAME))
     stdout = sys.stdout

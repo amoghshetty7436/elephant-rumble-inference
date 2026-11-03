@@ -109,6 +109,7 @@ ENCODERS = {
     "birdaves": dict(kind="aves", sr=500, url="https://storage.googleapis.com/esp-public-files/birdaves/",
                      files=("birdaves-biox-base.torchaudio.model_config.json", "birdaves-biox-base.torchaudio.pt")),
     "dasheng": dict(kind="dasheng", sr=1000),   # 1 kHz audio played as 16 kHz: 16x, 40 ms = 0.64 s
+    "dasheng06b": dict(kind="dasheng", sr=1000, variant="dasheng_06B", dim=1280),  # round 2: 600 M weights
 }
 DASHENG_BLOCK = 161280         # samples Dasheng attends over at once (1008 frames of 160)
 
@@ -821,25 +822,27 @@ class DashengEmbedder:
     """Dasheng-base on 1 kHz audio played as 16 kHz: one 768-number fingerprint per 640
     samples = 0.64 s, unit length like AVES's."""
 
-    def __init__(self, device):
-        from dasheng import dasheng_base
-        self.device = device
-        self.model = dasheng_base().to(device).eval()
+    def __init__(self, device, variant="dasheng_base", dim=768):
+        import dasheng
+        self.device, self.dim = device, dim
+        self.model = getattr(dasheng, variant)().to(device).eval()
+        self.half = variant != "dasheng_base" and device == "cuda"   # the bigger model in fp16 on the GPU
+        self.batch = 8 if variant == "dasheng_base" else 2
 
     def whole_file(self, y):
         import torch
         n = y.shape[0] // 640
         if n == 0:
-            return torch.empty(0, 768)
+            return torch.empty(0, self.dim)
         out = []
-        with torch.inference_mode():
+        with torch.inference_mode(), torch.autocast("cuda", dtype=torch.float16, enabled=self.half):
             blocks = [y[i:i + DASHENG_BLOCK] for i in range(0, y.shape[0], DASHENG_BLOCK)]
-            for b in range(0, len(blocks), 8):
-                part = blocks[b:b + 8]
+            for b in range(0, len(blocks), self.batch):
+                part = blocks[b:b + self.batch]
                 x = torch.zeros(len(part), DASHENG_BLOCK)
                 for j, t in enumerate(part):
                     x[j, :len(t)] = t
-                e = self.model(x.to(self.device)).float().cpu()   # [B, 252, 768]
+                e = self.model(x.to(self.device)).float().cpu()   # [B, 252, dim]
                 out.append(e.reshape(-1, e.shape[-1]))
         e = torch.cat(out)[:n]
         return e / e.norm(dim=1, keepdim=True).clamp_min(1e-6)
@@ -848,13 +851,13 @@ class DashengEmbedder:
 class FakeEncoder:
     """Stand-in for the encoders in the tests (no downloads): fp_replica's fake, other features."""
 
-    def __init__(self, sr):
-        self.sr = sr
+    def __init__(self, sr, dim=768):
+        self.sr, self.dim = sr, dim
 
     def whole_file(self, y):
         import torch
-        e = dc.FakeEmbedder().whole_file(y[::self.sr // 500] if self.sr > 500 else y)
-        return torch.roll(e, 3, dims=1)
+        e = torch.roll(dc.FakeEmbedder().whole_file(y[::self.sr // 500] if self.sr > 500 else y), 3, dims=1)
+        return torch.cat([e, e[:, :self.dim - 768]], 1) if self.dim > 768 else e
 
 
 ################################################################################
@@ -1368,11 +1371,11 @@ def cmd_embed(cl, enc):
         return
     spec = ENCODERS[enc]
     if cl.a.fake_embedder:
-        embed = FakeEncoder(spec["sr"])
+        embed = FakeEncoder(spec["sr"], spec.get("dim", 768))
     elif spec["kind"] == "aves":
         embed = load_aves_like(spec, cl.device)
     else:
-        embed = DashengEmbedder(cl.device)
+        embed = DashengEmbedder(cl.device, spec.get("variant", "dasheng_base"), spec.get("dim", 768))
     t0 = time.time()
     for i, (p, k) in enumerate(todo, 1):
         y = fp_replica.load_audio(cl.pools[p].sounds[k], sr_out=spec["sr"])
