@@ -1113,7 +1113,7 @@ class CandLab:
         for i, ((p, k), part) in enumerate(keys):
             if i % 20 == 0:
                 self.report(f"m4: cuts of training day {i + 1}/{len(keys)}")
-            m = ms[1 - fold[(p, k)]] if part == "train" else ms[0]
+            m = ms[fold[(p, k)]] if part == "train" else ms[0]  # model f never saw fold f
             labels = self.pools[p].labels.get(k, [])
             s, e, v = self.first_stage_events([m], self.base_spec["ctx"], [(p, k)])[(p, k)][0]
             truth = im.Truth(self.pools, [(p, k, 1.0)])
