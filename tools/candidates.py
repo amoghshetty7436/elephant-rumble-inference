@@ -692,8 +692,12 @@ def pcen(mag, hop_s):
 
 
 def stft_mag(y, nfft, hop):
+    """Magnitude STFT; clips shorter than one window (some noise clips) are padded with silence."""
     import torch
-    return torch.stft(torch.as_tensor(y, dtype=torch.float32), nfft, hop, window=torch.hann_window(nfft),
+    y = torch.as_tensor(y, dtype=torch.float32)
+    if y.shape[0] < nfft:
+        y = torch.nn.functional.pad(y, (0, nfft - y.shape[0]))
+    return torch.stft(y, nfft, hop, window=torch.hann_window(nfft),
                       center=True, return_complex=True).abs().numpy()
 
 
@@ -1328,20 +1332,27 @@ def cmd_features(cl):
     todo = [(p, k) for p, k in keys if not all(os.path.exists(feature_path(cl.feat, n, p, k)) for n in ("lf", "pitch"))]
     log(f"features: {len(todo)} of {len(keys)} recordings to do")
     t0 = time.time()
+    failed = []
     for i, (p, k) in enumerate(todo, 1):
-        y = dc.load_audio(cl.pools[p].sounds[k]).numpy()
-        n = max(1, int(math.ceil(len(y) / 320)))
-        for name, fn in (("lf", lf_features), ("pitch", pitch_features)):
-            path = feature_path(cl.feat, name, p, k)
-            if os.path.exists(path):
-                continue
-            cl.w.makedirs(os.path.dirname(path))
-            with open(cl.w.check(path + ".tmp"), "wb") as f:
-                np.save(f, fn(y, n))
-            os.replace(cl.w.check(path + ".tmp"), cl.w.check(path))
+        try:  # one bad recording must not stop the others
+            y = dc.load_audio(cl.pools[p].sounds[k]).numpy()
+            n = max(1, int(math.ceil(len(y) / 320)))
+            for name, fn in (("lf", lf_features), ("pitch", pitch_features)):
+                path = feature_path(cl.feat, name, p, k)
+                if os.path.exists(path):
+                    continue
+                cl.w.makedirs(os.path.dirname(path))
+                with open(cl.w.check(path + ".tmp"), "wb") as f:
+                    np.save(f, fn(y, n))
+                os.replace(cl.w.check(path + ".tmp"), cl.w.check(path))
+        except Exception as e:
+            log(f"features: {p}/{k} failed: {e!r}")
+            failed.append(f"{p}/{k}: {e!r}")
         if i % 10 == 0 or i == len(todo):
             left = (time.time() - t0) / i * (len(todo) - i)
             cl.report(f"features: {i}/{len(todo)} recordings, about {fmt_dur(left)} left")
+    if failed:
+        raise RuntimeError(f"features failed for {len(failed)} recordings:\n" + "\n".join(failed))
 
 
 def cmd_embed(cl, enc):

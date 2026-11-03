@@ -112,3 +112,10 @@ def test_all_candidates_end_to_end(source, monkeypatch):  # noqa: F811
     t = {m: os.path.getmtime(root / m / "model_seed0.pth") for m in cd.ALL_MODELS}
     cd.main(["--source", str(source), "--seeds", "2", "--fake-embedder"])
     assert all(os.path.getmtime(root / m / "model_seed0.pth") == t[m] for m in t)
+
+
+def test_features_of_clips_shorter_than_one_window():
+    y = np.random.default_rng(2).normal(size=400).astype(np.float32) * 0.01  # 0.8 s, like a rain-drop clip
+    n = int(np.ceil(len(y) / 320))
+    assert cd.lf_features(y, n).shape == (n, cd.LF_SUB * cd.LF_BINS)
+    assert cd.pitch_features(y, n).shape == (n, len(cd.PITCH_FEATURES))
