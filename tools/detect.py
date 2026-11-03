@@ -51,6 +51,7 @@ RAVEN_HEADER = ["Selection", "View", "Channel", "Begin Time (s)", "End Time (s)"
 TABLE_SUFFIX = ".rumbles.txt"
 PROBS_SUFFIX = ".probs.npy"
 FOLDER_TABLE = "_all_rumbles.txt"
+STALLED = 3  # exit code of a run stopped by the watchdog
 # measured on the lab PC (improve.md): AVES on the GPU takes about 31 s per 24 h of audio
 AVES_S_PER_24H = 31.0
 
@@ -191,14 +192,59 @@ def by_out_folder(jobs):
 # run
 ################################################################################
 
+class Watchdog:
+    """Ends the process (exit code STALLED) when nothing has moved on for `limit` seconds, e.g. a
+    read from the network drive that never returns, so a PowerShell loop can start it again."""
+
+    def __init__(self, limit, exit=os._exit):
+        import threading
+        self.limit, self.exit = limit, exit
+        self.last, self.what = time.time(), "starting"
+        self.stop = threading.Event()
+        self.thread = threading.Thread(target=self.watch, daemon=True)
+        if limit > 0:
+            self.thread.start()
+
+    def beat(self, what):
+        self.last, self.what = time.time(), what
+
+    def watch(self):
+        while not self.stop.wait(min(30.0, self.limit / 4)):
+            if time.time() - self.last > self.limit:
+                log(f"STALLED: no progress for {fmt_dur(time.time() - self.last)} while {self.what}. "
+                    f"Stopping (exit code {STALLED}) so it can be started again; finished files are kept.")
+                sys.stdout.flush()
+                self.exit(STALLED)
+                return
+
+
+def no_quick_edit():
+    """A click in a Windows console window starts a text selection that pauses the program until
+    Esc is pressed. Turn that off for this window while the run lasts."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        h = k.GetStdHandle(-10)  # STD_INPUT_HANDLE
+        mode = ctypes.c_uint32()
+        if k.GetConsoleMode(h, ctypes.byref(mode)):
+            k.SetConsoleMode(h, (mode.value & ~0x0040) | 0x0080)  # QUICK_EDIT off, EXTENDED_FLAGS on
+    except Exception:  # noqa: BLE001 - not a console, or no permission: nothing to do
+        pass
+
+
 def cmd_run(a):
     import improve as im
     im.keep_awake()
+    no_quick_edit()
     os.makedirs(a.out, exist_ok=True)
     stdout, sys.stdout = sys.stdout, dc.Tee(os.path.join(a.out, "run_log.txt"))
+    a.watchdog = Watchdog(a.stall_minutes * 60)
     try:
         run(a)
     finally:
+        a.watchdog.stop.set()
         sys.stdout.f.close()
         sys.stdout = stdout
 
@@ -222,6 +268,8 @@ def run(a):
     if new:
         tw.writerow(TIMING_COLUMNS)
     done_hours, t_start, failed = 0.0, time.time(), []
+    wd = getattr(a, "watchdog", None) or Watchdog(0)
+    wd.beat("reading the headers of the recordings to do")
     total_hours = sum(audio_info(p)["hours"] for p, _ in todo) if a.estimate else 0.0
     left_in_folder = {d: sum(1 for _, b in todo if os.path.dirname(b) == d) for d in {os.path.dirname(b) for _, b in todo}}
     # read + resample the next files in the background while AVES works on this one
@@ -238,15 +286,18 @@ def run(a):
         queue(i + a.prefetch)
         try:
             t0 = time.time()
+            wd.beat(f"waiting for {src} to be read from the drive")
             sr = audio_info(src)["sr"]
             y, t_load = ahead.pop(i).result()
             waited = time.time() - t0
             hours = y.shape[0] / 500 / 3600
             t1 = time.time()
+            wd.beat(f"running AVES on {src}")
             emb = det.embeddings(y)
             t2 = time.time()
             prob = det.probs(emb)
             t3 = time.time()
+            wd.beat(f"writing the results of {src}")
             os.makedirs(os.path.dirname(dc.long_path(base)), exist_ok=True)
             np.save(dc.long_path(base + PROBS_SUFFIX + ".tmp.npy"), prob.astype(np.float16))
             os.replace(dc.long_path(base + PROBS_SUFFIX + ".tmp.npy"), dc.long_path(base + PROBS_SUFFIX))
@@ -274,6 +325,7 @@ def run(a):
         d = os.path.dirname(base)
         left_in_folder[d] -= 1
         if left_in_folder[d] == 0:
+            wd.beat(f"writing the folder table of {d}")
             n = folder_table(d, by_out_folder(jobs)[d], det.rule, min_score)
             log(f"folder table {os.path.join(d, FOLDER_TABLE)}: {n} rumbles")
             write_summary(a.out, jobs, info, min_score)
@@ -567,6 +619,8 @@ def main(argv=None):
                         "on the validation days; 0 keeps every detection of the alarm rule)")
     p.add_argument("--prefetch", type=int, default=2, help="files read + resampled ahead in the background")
     p.add_argument("--redo", action="store_true", help="redo files that already have a table")
+    p.add_argument("--stall-minutes", type=float, default=20,
+                   help=f"run: stop with exit code {STALLED} after this long without progress (0: never)")
     p.add_argument("--no-estimate", dest="estimate", action="store_false", help="don't read every header first for the time left")
     p.add_argument("--no-timing", action="store_true", help="survey: only list the files, don't time one")
     p.add_argument("--fake-embedder", action="store_true", help=argparse.SUPPRESS)

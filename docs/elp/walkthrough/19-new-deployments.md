@@ -141,8 +141,10 @@ notepad "$out\_survey\survey.md"
 One after the other, in one go (leave the PC plugged in; the script keeps Windows awake, but pause Windows Update):
 
 ```
-python tools\detect.py run $nn --out "$out\nn_202306_jun_dep17" ; python tools\detect.py run $dz --out "$out\dz_202512_dec_dep10_part2"
+do { python tools\detect.py run $nn --out "$out\nn_202306_jun_dep17" } while ($LASTEXITCODE -eq 3) ; do { python tools\detect.py run $dz --out "$out\dz_202512_dec_dep10_part2" } while ($LASTEXITCODE -eq 3)
 ```
+
+If nothing moves on for 20 minutes (for example a read from L: that never returns), the script stops itself with exit code 3 and the `do … while` loop starts it again, carrying on from where it was. The first run (30 October) hung like this for two days with no error, which is why this is there. The script also turns off the console's "QuickEdit" mode, where a single click in the window pauses the program until Esc is pressed.
 
 It prints one line per recording with the time per 24 h and the time left. If it stops (crash, restart), **run the same line again**: it skips the recordings that already have a table.
 

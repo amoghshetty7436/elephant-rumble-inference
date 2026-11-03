@@ -89,3 +89,17 @@ def test_out_inside_input_is_refused(setup):
     data, model, _ = setup
     with pytest.raises(SystemExit):
         detect.main(["run", str(data), "--out", str(data / "results"), "--model", str(model), "--fake-embedder"])
+
+
+def test_watchdog_stops_a_stalled_run():
+    import time
+    codes = []
+    wd = detect.Watchdog(0.4, exit=codes.append)
+    wd.beat("reading x.wav")
+    time.sleep(0.3)
+    wd.beat("running AVES")  # progress: no stop yet
+    assert not codes
+    time.sleep(1.0)
+    assert codes == [detect.STALLED]
+    wd.stop.set()
+    assert detect.Watchdog(0).thread.is_alive() is False  # 0 = no watchdog
