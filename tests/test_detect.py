@@ -105,3 +105,12 @@ def test_watchdog_stops_a_stalled_run(tmp_path):
     assert "stalled while running AVES" in dump.read_text() and "test_watchdog" in dump.read_text()
     wd.stop.set()
     assert detect.Watchdog(0).thread.is_alive() is False  # 0 = no watchdog
+
+
+def test_tiny_recording_gets_an_empty_table(setup):
+    data, model, out = setup
+    sf.write(data / "nn06a" / "nn06a_20251203_000000.wav", np.zeros(200, dtype=np.float32), 8000)
+    detect.main(["run", str(data), "--out", str(out), "--model", str(model), "--fake-embedder", "--min-score", "0"])
+    assert read_table(out / "deployment" / "nn06a" / "nn06a_20251203_000000.rumbles.txt") == []
+    assert not (out / "failed.txt").exists()
+    assert "**7 of 7 recordings done**" in (out / "summary.md").read_text()

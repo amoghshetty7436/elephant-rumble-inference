@@ -69,7 +69,10 @@ def find_audio(roots):
             continue
         if not os.path.isdir(root):
             sys.exit(f"Can't find {root}. Is the drive connected?")
-        for dirpath, dirs, names in os.walk(root):
+        def unlisted(err):  # os.walk skips a folder it can't list without saying so
+            log(f"WARNING could not list {err.filename}: {err}. Its recordings are left out; run again later.")
+
+        for dirpath, dirs, names in os.walk(root, onerror=unlisted):
             dirs.sort()
             out += [(root, os.path.join(dirpath, n)) for n in sorted(names)
                     if n.lower().endswith(AUDIO_EXT) and not n.startswith("._")]
@@ -130,7 +133,10 @@ class Detector:
         return self.embed.whole_file(y)
 
     def probs(self, emb):
+        import numpy as np
         import experiments as ex
+        if emb.shape[0] == 0:  # a recording shorter than about a second: nothing to score
+            return np.zeros(0, dtype=np.float32)
         return ex.day_probs(self.model, emb, self.ctx, self.device)
 
 
