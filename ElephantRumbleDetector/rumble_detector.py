@@ -129,14 +129,68 @@ def find_audio(roots):
         if not os.path.isdir(root):
             sys.exit(f"Can't find {root}.\nCheck the spelling, and that the drive (for example L:) is connected.")
 
-        def unlisted(err):  # os.walk skips a folder it can't open without saying so
-            log(f"WARNING: could not open the folder {err.filename} ({err.strerror}). "
-                f"Its recordings are left out this time; run again later to include them.")
-
-        for dirpath, dirs, names in os.walk(root, onerror=unlisted):
-            dirs.sort()
-            out += [(root, os.path.join(dirpath, n)) for n in sorted(names) if is_audio(n)]
+        out += [(root, p) for p in walk_audio(root)]
     return out
+
+
+SIZES = {}  # file sizes seen while listing (free on Windows), for estimating hours without opening files
+
+
+def walk_audio(folder):
+    """Every sound file under `folder`, sorted, noting sizes in SIZES. A folder that can't be
+    opened is reported, not skipped silently."""
+    try:
+        with os.scandir(folder) as it:
+            entries = sorted(it, key=lambda e: e.name)
+    except OSError as e:
+        log(f"WARNING: could not open the folder {folder} ({e.strerror or e}). "
+            f"Its recordings are left out this time; run again later to include them.")
+        return []
+    files, subdirs = [], []
+    for e in entries:
+        try:
+            if e.is_dir():
+                subdirs.append(e.path)
+            elif is_audio(e.name):
+                files.append(e.path)
+                try:
+                    SIZES[e.path] = e.stat().st_size
+                except OSError:
+                    pass
+        except OSError:
+            continue
+    for d in subdirs:
+        files += walk_audio(d)
+    return files
+
+
+def estimate_hours(paths, beat=None):
+    """Total hours of the recordings, from their sizes: one header is read per folder (opening
+    thousands of files over the network takes far too long), the rest scaled by size."""
+    per_folder = {}
+    for p in paths:
+        per_folder.setdefault(os.path.dirname(p), []).append(p)
+    total = 0.0
+    for folder, ps in per_folder.items():
+        if beat:
+            beat(f"estimating the hours in {folder}")
+        bytes_per_hour = None
+        for p in sorted(ps, key=lambda q: -SIZES.get(q, 0))[:3]:  # the biggest files have real audio
+            info = audio_info(p)
+            if not info["error"] and info["hours"] > 0.01:
+                bytes_per_hour = info["bytes"] / info["hours"]
+                break
+        if not bytes_per_hour:
+            continue
+        for p in ps:
+            size = SIZES.get(p)
+            if size is None:
+                try:
+                    size = os.path.getsize(p)
+                except OSError:
+                    size = 0
+            total += size / bytes_per_hour
+    return total
 
 
 def out_base(out, root, path, several):
@@ -606,11 +660,9 @@ def run(a, wd):
             screen.flush()
 
     if a.estimate and todo:
-        log("reading the length of each recording (for the time left)...")
-        for k, (p, _) in enumerate(todo):
-            wd.beat("reading the length of each recording")
-            total_hours += audio_info(p)["hours"]
-        log(f"{total_hours:,.1f} hours of audio to do ({total_hours / 24:,.1f} days)")
+        log("estimating the hours of audio (for the time left)...")
+        total_hours = estimate_hours([p for p, _ in todo], wd.beat)
+        log(f"about {total_hours:,.1f} hours of audio to do ({total_hours / 24:,.1f} days)")
         t_start = time.time()  # the time left counts from here
         progress(0.0)
     left_in_folder = {}
