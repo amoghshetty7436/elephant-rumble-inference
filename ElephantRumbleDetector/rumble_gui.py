@@ -371,6 +371,28 @@ class App:
         CutoffDialog(self)
 
 
+def load_test_results():
+    """{cut-off: {column: value}} from model\\test_results.csv (run 0 on ELP's test days)."""
+    import csv
+    path = os.path.join(rd.MODEL_DIR, "test_results.csv")
+    if not os.path.exists(path):
+        return {}
+    return {float(r["cut_off"]): {k: float(v) for k, v in r.items()} for r in csv.DictReader(open(path))}
+
+
+def rd_standard_cut_off():
+    import json
+    return json.load(open(os.path.join(rd.MODEL_DIR, "settings.json")))["cut_off"]
+
+
+def parse_cut_off(text):
+    m = re.match(r"\s*([01]?[.,]?\d*)", text or "")
+    try:
+        return float(m.group(1).replace(",", ".")) if m and m.group(1) not in ("", ".", ",") else None
+    except ValueError:
+        return None
+
+
 class CutoffDialog:
     def __init__(self, app):
         self.app = app
@@ -387,25 +409,48 @@ class CutoffDialog:
         self.folder = tk.StringVar(value=start)
         ttk.Entry(f, textvariable=self.folder, width=55).grid(row=2, column=0, columnspan=2, sticky="ew")
         ttk.Button(f, text="Choose...", command=self.pick).grid(row=2, column=2, padx=(6, 0))
-        ttk.Label(f, text="New cut-off (standard 0.993):").grid(row=3, column=0, sticky="w", pady=(10, 0))
-        self.value = tk.StringVar(value="0.993")
-        ttk.Entry(f, textvariable=self.value, width=10).grid(row=3, column=1, sticky="w", pady=(10, 0))
-        table = ("With this model on ELP's test days:\n"
-                 "   0.95    finds 86% of rumbles; 70% of detections are real\n"
-                 "   0.98    finds 81%; 81% are real\n"
-                 "   0.99    finds 77%; 86% are real\n"
-                 "   0.993   finds 75%; 88% are real   (standard)\n"
-                 "   0.999   finds 65%; 95% are real\n"
-                 "(Sample A, 54 Nouabale-Ndoki days. More in the README.)\n"
-                 "Lower finds more rumbles but gives more false alarms to check.")
-        ttk.Label(f, text=table, font=("Consolas", 9), justify="left").grid(row=4, column=0, columnspan=3,
-                                                                            sticky="w", pady=(10, 0))
+        ttk.Label(f, text="New cut-off (pick one, or type any number from 0 to 1):").grid(
+            row=3, column=0, columnspan=3, sticky="w", pady=(10, 0))
+        self.curve = load_test_results()
+        std = rd_standard_cut_off()
+        names = [f"{c:g}" + ("  (standard)" if abs(c - std) < 1e-9 else "") for c in sorted(self.curve)]
+        self.value = tk.StringVar(value=f"{std:g}  (standard)")
+        box = ttk.Combobox(f, textvariable=self.value, values=names, width=18, height=len(names))
+        box.grid(row=4, column=0, sticky="w")
+        self.value.trace_add("write", lambda *_: self.explain())
+        self.details = ttk.Label(f, font=("Consolas", 9), justify="left")
+        self.details.grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ttk.Label(f, text="Lower finds more rumbles but gives more false alarms to check; higher gives fewer false "
+                          "alarms but misses more rumbles. The full table is in the README.",
+                  wraplength=520, style="Hint.TLabel").grid(row=6, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        self.explain()
         fb = ttk.Frame(f)
-        fb.grid(row=5, column=0, columnspan=3, sticky="e", pady=(12, 0))
+        fb.grid(row=7, column=0, columnspan=3, sticky="e", pady=(12, 0))
         self.apply_b = ttk.Button(fb, text="Rewrite the tables", command=self.apply)
         self.apply_b.pack(side="left")
         ttk.Button(fb, text="Close", command=w.destroy).pack(side="left", padx=(6, 0))
         w.grab_set()
+
+    def explain(self):
+        v = parse_cut_off(self.value.get())
+        if v is None or not 0 <= v <= 1:
+            self.details.configure(text="Type a number between 0 and 1, such as 0.95.\n\n\n")
+            return
+        if not self.curve:
+            self.details.configure(text="")
+            return
+        near = min(self.curve, key=lambda c: abs(c - v))
+        r = self.curve[near]
+        head = (f"With this model on ELP's test days, at {near:g}" +
+                ("" if abs(near - v) < 1e-9 else f" (the nearest tested value to {v:g})") + ":")
+        self.details.configure(text=(
+            f"{head}\n"
+            f"  Sample A (54 Nouabale-Ndoki days): finds {r['sampleA_recall'] * 100:.0f}% of rumbles, "
+            f"{r['sampleA_precision'] * 100:.0f}% of detections are real\n"
+            f"  Sample B (2024 test days):         finds {r['sampleB_recall'] * 100:.0f}% of rumbles, "
+            f"{r['sampleB_precision'] * 100:.0f}% of detections are real\n"
+            f"  False alarms per hour: {r['sampleA_false_alarms_per_hour']:.2f} (Sample A), "
+            f"{r['vehicle_false_alarms_per_hour']:.2f} (days with vehicles)"))
 
     def pick(self):
         d = filedialog.askdirectory(parent=self.w, title="Choose the results folder (the one with summary.md)")
@@ -419,8 +464,8 @@ class CutoffDialog:
                                    "Choose the folder that has summary.md in it.", parent=self.w)
             return
         try:
-            v = float(self.value.get().replace(",", "."))
-            assert 0 <= v <= 1
+            v = parse_cut_off(self.value.get())
+            assert v is not None and 0 <= v <= 1
         except (ValueError, AssertionError):
             messagebox.showwarning("Change the cut-off", "Type a number between 0 and 1, such as 0.95.", parent=self.w)
             return

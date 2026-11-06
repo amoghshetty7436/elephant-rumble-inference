@@ -167,17 +167,33 @@ recordings or a graphics card. You can always go back to 0.993.
 What each cut-off gave with this model on ELP's test days. "Found" is the share of the hand-marked
 rumbles it found (recall); "real" is the share of its detections that were rumbles (precision).
 Sample A is 54 Nouabalé-Ndoki forest days; Sample B is 2024's additional test days; the vehicle
-days have no elephants, so every detection there is a false alarm.
+days have no elephants, so every detection there is a false alarm. (The same numbers are in
+`model\test_results.csv`, and the window shows them when you pick a cut-off.)
 
-| Cut-off | Sample A: found / real | Sample B: found / real | False alarms per hour (Sample A) | False alarms per hour (vehicle days) |
-|---|---|---|---|---|
-| 0.90 | 89% / 57% | 97% / 46% | 0.39 | 1.04 |
-| 0.95 | 86% / 70% | 95% / 59% | 0.21 | 0.68 |
-| 0.98 | 81% / 81% | 93% / 74% | 0.10 | 0.35 |
-| 0.99 | 77% / 86% | 91% / 80% | 0.07 | 0.18 |
-| **0.993 (standard)** | **75% / 88%** | **90% / 83%** | **0.06** | **0.15** |
-| 0.998 | 69% / 93% | 87% / 89% | 0.03 | 0.07 |
-| 0.999 | 65% / 95% | 85% / 92% | 0.02 | 0.06 |
+From 0.5 to 0.95 the share of real detections rises a lot while few rumbles are lost; above
+0.95 each small step trades rumbles found for fewer false alarms.
+
+| Cut-off | Sample A: found / real | Sample A false alarms per hour | Sample B: found / real | Sample B false alarms per hour | Vehicle days false alarms per hour |
+|---|---|---|---|---|---|
+| 0.5 | 92% / 20% | 2.10 | 98% / 14% | 2.02 | 4.61 |
+| 0.55 | 92% / 23% | 1.83 | 98% / 16% | 1.76 | 4.24 |
+| 0.6 | 92% / 25% | 1.58 | 98% / 18% | 1.52 | 3.72 |
+| 0.65 | 92% / 28% | 1.36 | 98% / 20% | 1.28 | 3.25 |
+| 0.7 | 92% / 32% | 1.14 | 98% / 23% | 1.08 | 2.78 |
+| 0.75 | 92% / 36% | 0.93 | 98% / 28% | 0.85 | 2.25 |
+| 0.8 | 91% / 41% | 0.76 | 98% / 32% | 0.67 | 1.92 |
+| 0.85 | 90% / 48% | 0.57 | 97% / 39% | 0.50 | 1.46 |
+| 0.9 | 89% / 57% | 0.39 | 97% / 46% | 0.36 | 1.04 |
+| 0.95 | 86% / 70% | 0.21 | 95% / 59% | 0.21 | 0.68 |
+| 0.96 | 85% / 75% | 0.16 | 95% / 63% | 0.17 | 0.58 |
+| 0.97 | 84% / 76% | 0.14 | 94% / 69% | 0.13 | 0.46 |
+| 0.98 | 81% / 81% | 0.10 | 93% / 74% | 0.10 | 0.35 |
+| 0.99 | 76% / 86% | 0.07 | 91% / 80% | 0.07 | 0.18 |
+| **0.993 (standard)** | **74% / 88%** | 0.06 | **90% / 83%** | 0.05 | 0.15 |
+| 0.995 | 73% / 90% | 0.04 | 89% / 84% | 0.05 | 0.10 |
+| 0.997 | 71% / 92% | 0.03 | 88% / 88% | 0.03 | 0.08 |
+| 0.998 | 69% / 93% | 0.03 | 86% / 89% | 0.03 | 0.07 |
+| 0.999 | 65% / 95% | 0.02 | 85% / 92% | 0.02 | 0.06 |
 
 ---
 
