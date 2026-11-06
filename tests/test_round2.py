@@ -103,3 +103,33 @@ def test_ft_inference_covers_every_step_once():
         y = np.random.default_rng(n).normal(size=n * r2.dft.STEP + 100).astype(np.float32) * 0.01
         t = r2.dft.day_tokens(m, y, n, "cpu")
         assert t.shape == (n, m.dim) and torch.allclose(t.norm(dim=1), torch.ones(n), atol=1e-3)
+
+
+def test_cut_store_closes_its_file_before_replacing_it(tmp_path, monkeypatch):
+    """On Windows a file that is still open can't be replaced: adding cuts to a recording that
+    already had some failed with 'Access is denied'. Every loaded npz must be closed first."""
+    import types
+    monkeypatch.setattr(dc, "load_audio", lambda path: torch.zeros(1000))
+    monkeypatch.setattr(cd, "spectrogram_cut", lambda y, t: np.full((128, cd.cut_cols()), int(t) % 255, np.uint8))
+    opened, real_load = [], np.load
+
+    def tracking_load(*a, **k):
+        z = real_load(*a, **k)
+        opened.append(z)
+        return z
+    monkeypatch.setattr(np, "load", tracking_load)
+    real_replace = os.replace
+
+    def strict_replace(src, dst):
+        assert all(getattr(z, "fid", None) is None for z in opened), "npz still open while replacing it"
+        real_replace(src, dst)
+    monkeypatch.setattr(os, "replace", strict_replace)
+    w = types.SimpleNamespace(makedirs=lambda d: os.makedirs(d, exist_ok=True), check=lambda p: p)
+    lab = types.SimpleNamespace(w=w, pools={"p": types.SimpleNamespace(sounds={"k": "x.wav"})})
+    store = r2.CutStore(lab, str(tmp_path))
+    a = store.get("validation", "p", "k", [(0, 10), (20, 30)])
+    b = store.get("validation", "p", "k", [(20, 30), (40, 50)])     # one old box, one new: rewrites the file
+    assert opened and len(a) == 2 and len(b) == 2
+    assert (b[0] == a[1]).all()
+    c = store.get("validation", "p", "k", [(40, 50), (0, 10)])
+    assert (c[1] == a[0]).all() and (c[0] == b[1]).all()

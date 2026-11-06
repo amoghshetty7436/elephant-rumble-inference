@@ -192,9 +192,9 @@ class CutStore:
         path = self.path(part, p, k)
         have, x = {}, np.zeros((0, 128, cd.cut_cols()), np.uint8)
         if os.path.exists(path):
-            z = np.load(path)
-            x = z["x"]
-            have = {tuple(int(v) for v in b): i for i, b in enumerate(z["boxes"])}
+            with np.load(path) as z:          # close the file: Windows can't replace an open file
+                x, old = z["x"], z["boxes"]
+            have = {tuple(int(v) for v in b): i for i, b in enumerate(old)}
         missing = sorted(set(b for b in boxes if b not in have))
         if missing:
             y = dc.load_audio(self.lab.pools[p].sounds[k]).numpy()
