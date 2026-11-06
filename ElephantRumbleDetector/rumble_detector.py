@@ -7,7 +7,7 @@ The model is the improved FruitPunch AI detector (E2_ctx8_noise10_rand3000_gap0.
 run 0) with its alarm rule and the cut-off that found 80% of the rumbles on the validation days.
 It is the same detector that was run on nn_202306_jun_dep17 and dz_202512_dec_dep10.
 
-Most people never type these commands: they double-click "2 - Find rumbles.bat". For reference:
+Most people never type these commands: they double-click the Start file for their system. For reference:
 
   python rumble_detector.py                       ask for the recordings and the results folder, then run
   python rumble_detector.py "L:\\path\\to\\site"     the same, with the recordings already given
@@ -95,6 +95,8 @@ def is_under(path, root):
 def clean_path(text):
     """A path as people paste it: quotes, spaces, or a trailing slash around it."""
     t = text.strip().strip('"').strip("'").strip()
+    if os.name != "nt" and "\\ " in t and not os.path.exists(t):  # dragged into a Mac/Linux terminal
+        t = re.sub(r"\\(.)", r"\1", t)
     return t.rstrip("\\/") if len(t) > 3 else t
 
 
@@ -306,7 +308,7 @@ def get_aves_files():
                         log(f"  {done * 100 // size}%")
         except Exception as e:  # noqa: BLE001
             sys.exit(f"Could not download AVES ({e}).\nThis needs the internet once. Check the connection and "
-                     f"run '1 - Install.bat' again, or copy the two AVES files into {AVES_DIR}.")
+                     f"double-click the Start file again, or copy the two AVES files into {AVES_DIR}.")
         os.replace(dst + ".part", dst)
     return [os.path.join(AVES_DIR, n) for n in AVES_FILES]
 
@@ -566,7 +568,13 @@ class Watchdog:
 
 
 def keep_awake():
-    """Ask Windows not to go to sleep while this runs (the screen may still turn off)."""
+    """Ask the computer not to go to sleep while this runs (the screen may still turn off)."""
+    if sys.platform == "darwin":
+        try:  # caffeinate ends by itself when this program ends
+            subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:  # noqa: BLE001
+            pass
     if os.name == "nt":
         try:
             import ctypes
@@ -999,14 +1007,15 @@ def cmd_setup(a):
     log(f"test on one minute of audio: {len(prob)} frames in {time.time() - t0:.1f} s")
     if len(prob) < 90:
         sys.exit("SOMETHING IS WRONG: the test gave too few results. Please send this window to Amogh.")
-    log("ALL GOOD. The detector is ready: double-click '2 - Find rumbles.bat'.")
+    log("ALL GOOD. The detector is ready.")
     return 0
 
 
 def default_out(inp):
     home = os.path.expanduser("~")
-    for desk in (os.path.join(os.environ.get("OneDrive", ""), "Desktop"), os.path.join(home, "Desktop")):
-        if desk and os.path.isdir(desk):
+    onedrive = os.environ.get("OneDrive")
+    for desk in ([os.path.join(onedrive, "Desktop")] if onedrive else []) + [os.path.join(home, "Desktop")]:
+        if os.path.isdir(desk):
             break
     else:
         desk = home
@@ -1031,7 +1040,8 @@ def interactive(given=None):
             inp, given = clean_path(given), None
         else:
             print("  Which recordings? Paste the path of a deployment folder, a site folder or one")
-            print("  sound file (in File Explorer: click the address bar, Ctrl+C, then right-click here).")
+            print("  sound file (Windows: in File Explorer click the address bar, Ctrl+C, then right-click"
+                  " here; Mac: drag the folder into this window), then press Enter.")
             inp = clean_path(ask("  Recordings: "))
         if not inp:
             continue

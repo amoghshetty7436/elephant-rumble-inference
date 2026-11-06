@@ -4,7 +4,7 @@ The window of the elephant rumble detector: pick the recordings and a results fo
 Start. It runs `rumble_detector.py run` in the background (restarting it if it gets stuck),
 shows its progress and messages, and can change the cut-off of finished results.
 
-Opened by "2 - Find rumbles.bat". Uses only tkinter, which comes with Python.
+Opened by the Start file. Uses only tkinter, which comes with Python.
 """
 import os
 import queue
@@ -25,6 +25,9 @@ from tkinter import filedialog, messagebox, ttk  # noqa: E402
 TITLE = "Elephant Rumble Detector"
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW: no black window for the worker
 PAD = 8
+FONT, MONO = {"win32": ("Segoe UI", "Consolas"), "darwin": ("Helvetica Neue", "Menlo")}.get(
+    sys.platform, ("DejaVu Sans", "DejaVu Sans Mono"))
+BUMP = 3 if sys.platform == "darwin" else 0  # Mac draws the same point size smaller
 # the detector runs in python.exe (hidden), not pythonw.exe, so that its printed lines reach the window
 PYTHON = os.environ.get("RUMBLE_WORKER_PYTHON") or (
     os.path.join(os.path.dirname(sys.executable), "python.exe")
@@ -48,6 +51,8 @@ def open_folder(path):
         return
     if os.name == "nt":
         os.startfile(path)
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", path])
     else:
         subprocess.Popen(["xdg-open", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -107,10 +112,10 @@ class App:
         style = ttk.Style()
         if "vista" in style.theme_names():
             style.theme_use("vista")
-        style.configure("Title.TLabel", font=("Segoe UI", 15, "bold"))
-        style.configure("Big.TButton", font=("Segoe UI", 12, "bold"), padding=(28, 8))
+        style.configure("Title.TLabel", font=(FONT, 15 + BUMP, "bold"))
+        style.configure("Big.TButton", font=(FONT, 12 + BUMP, "bold"), padding=(28, 8))
         style.configure("Hint.TLabel", foreground="#666666")
-        style.configure("Status.TLabel", font=("Segoe UI", 10))
+        style.configure("Status.TLabel", font=(FONT, 10 + BUMP))
         style.configure("Link.TLabel", foreground="#0b5cad")
 
         main = ttk.Frame(root, padding=(16, 12))
@@ -189,7 +194,7 @@ class App:
         main.rowconfigure(9, weight=1)
         fl2.columnconfigure(0, weight=1)
         fl2.rowconfigure(0, weight=1)
-        self.log = tk.Text(fl2, height=10, wrap="word", font=("Consolas", 9), state="disabled",
+        self.log = tk.Text(fl2, height=10, wrap="word", font=(MONO, 9 + BUMP), state="disabled",
                            background="#fbfbfb", relief="solid", borderwidth=1)
         self.log.grid(row=0, column=0, sticky="nsew")
         sb = ttk.Scrollbar(fl2, command=self.log.yview)
@@ -469,7 +474,7 @@ class CutoffDialog:
         box = ttk.Combobox(f, textvariable=self.value, values=names, width=18, height=len(names))
         box.grid(row=4, column=0, sticky="w")
         self.value.trace_add("write", lambda *_: self.explain())
-        self.details = ttk.Label(f, font=("Consolas", 9), justify="left")
+        self.details = ttk.Label(f, font=(MONO, 9 + BUMP), justify="left")
         self.details.grid(row=5, column=0, columnspan=3, sticky="w", pady=(8, 0))
         ttk.Label(f, text="Lower finds more rumbles but gives more false alarms to check; higher gives fewer false "
                           "alarms but misses more rumbles. The full table is in the README.",
