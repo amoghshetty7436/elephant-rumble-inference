@@ -322,11 +322,11 @@ class App:
         if self.total:
             parts.append(f"{self.done} of {self.total} recordings done")
         if p and p[1] > 0:
-            done, total, secs = p
+            done, total, left = p
             self.bar.configure(maximum=total, value=min(done, total))
             parts.append(f"{done:,.1f} of {total:,.1f} hours of audio analysed ({min(100, done / total * 100):.0f}%)")
-            if done > 0 and secs >= 15:
-                parts.append(f"about {rd.fmt_dur(max(0.0, total - done) * secs / done)} left")
+            if left >= 0:
+                parts.append(f"about {rd.fmt_dur(left)} left")
             elif done < total:
                 parts.append("working out the time left...")
         elif self.total:
@@ -347,7 +347,7 @@ class App:
         self.file_status.configure(text=text)
 
     def add_line(self, line):
-        m = re.match(r"@progress ([\d.]+) ([\d.]+) ([\d.]+)(?: ([\d.]+) ([\d.]+) (\d+) (\d+) (\S+) (.*))?", line)
+        m = re.match(r"@progress ([\d.]+) ([\d.]+) (-?[\d.]+)(?: ([\d.]+) ([\d.]+) (\d+) (\d+) (\S+) (.*))?", line)
         if m:  # for the bars only, not shown in the messages
             self.hours = tuple(float(x) for x in m.groups()[:3])
             if m.group(4) is not None:

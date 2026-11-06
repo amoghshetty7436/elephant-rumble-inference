@@ -30,6 +30,10 @@ import subprocess
 import sys
 import threading
 import time
+import warnings
+
+# PyTorch's Windows builds say this on every start; it only means a slightly slower attention kernel
+warnings.filterwarnings("ignore", message=".*flash attention.*")
 from fractions import Fraction
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -650,12 +654,21 @@ def run(a, wd):
     done_hours, t_start, failed = 0.0, time.time(), []
     total_hours = 0.0
 
+    ref = {"t": None, "h": 0.0}  # the clock for the time left starts after the first recording (start-up is slow)
+
+    def seconds_left(hours):
+        now = time.time()
+        t0, h0 = (ref["t"], ref["h"]) if ref["t"] is not None else (t_start, 0.0)
+        if not total_hours or hours - h0 <= 0 or now - t0 < 10:
+            return -1.0
+        return max(0.0, total_hours - hours) * (now - t0) / (hours - h0)
+
     def progress(hours, file_done=0.0, file_hours=0.0, i=0, phase="-", name=""):
         """A line for the window's two progress bars: hours of audio analysed, hours in all, seconds so far;
         then the current recording: hours analysed, its hours, its number, what it is doing, its name."""
         if os.environ.get("RUMBLE_PROGRESS"):
             screen = getattr(sys.stdout, "out", sys.stdout)  # not into run_log.txt
-            screen.write(f"@progress {hours:.4f} {total_hours:.4f} {time.time() - t_start:.1f} {file_done:.4f} "
+            screen.write(f"@progress {hours:.4f} {total_hours:.4f} {seconds_left(hours):.1f} {file_done:.4f} "
                          f"{file_hours:.4f} {i} {len(todo)} {phase} {name}\n")
             screen.flush()
 
@@ -723,9 +736,12 @@ def run(a, wd):
         tf.flush()
         done_hours += hours
         progress(done_hours, hours, hours, i + 1, "done", os.path.basename(src))
-        el = time.time() - t_start
-        left = (f", about {fmt_dur(max(0.0, total_hours - done_hours) * el / done_hours)} left"
-                if total_hours and done_hours > 0 else "")
+        if ref["t"] is None and len(todo) > 1:
+            ref["t"], ref["h"] = time.time(), done_hours
+        sl = seconds_left(done_hours)
+        if sl < 0 and total_hours and done_hours > 0:  # just after the first recording: the whole run so far
+            sl = max(0.0, total_hours - done_hours) * (time.time() - t_start) / done_hours
+        left = f", about {fmt_dur(sl)} left" if total_hours and sl >= 0 else ""
         note = " (too short to analyse)" if hours < 2 * FRAME_SECONDS / 3600 else ""
         log(f"[{i + 1}/{len(todo)}] {os.path.basename(src)}: {hours:.1f} h, {len(rows)} rumbles{note}; "
             f"took {fmt_dur(t4 - t0)}{left}")
