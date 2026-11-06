@@ -24,7 +24,6 @@ tests are scored, unless --keep-fingerprints, so the disk never holds more than 
 Results: <out>\\_speedup\\speedup.md (validation) and speedup_final.md (tests).
 """
 import argparse
-import json
 import os
 import shutil
 import statistics
