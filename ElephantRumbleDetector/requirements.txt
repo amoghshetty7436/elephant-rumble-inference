@@ -1,0 +1,5 @@
+# PyTorch (torch + torchaudio) is installed by install.py (run by the Start file), which picks the build for the
+# computer's graphics card, or the processor-only build. These are the other packages:
+numpy>=1.24,<2
+scipy>=1.10
+soundfile>=0.12

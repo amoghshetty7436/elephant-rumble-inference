@@ -1,0 +1,15 @@
+{
+ "name": "E2_ctx8_noise10_rand3000_gap0.5_hard0_augnone (run 0)",
+ "about": "FruitPunch AI rumble classifier, improved and retrained by Amogh Shetty (Elephant Listening Project, 2026). AVES embeddings of audio resampled to 500 Hz, then a classifier that looks at 17 neighbouring 0.64 s frames (about 11 s).",
+ "model_file": "rumble_model.pth",
+ "context_frames": 8,
+ "rule": {
+  "on": 0.2,
+  "min_frames": 3,
+  "smooth": 5,
+  "gap": 3,
+  "score": "max"
+ },
+ "cut_off": 0.993,
+ "cut_off_note": "Detections scoring at least 0.993 are kept: on the validation days this found 80% of the rumbles."
+}
