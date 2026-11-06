@@ -1,6 +1,16 @@
 @echo off
 setlocal EnableExtensions
-cd /d "%~dp0"
+set "BASE=%~dp0"
+cd /d "%BASE%"
+if exist "%BASE%rumble_detector.py" goto unzipped
+echo.
+echo   THE FILES ARE STILL INSIDE THE ZIP.
+echo   Close this window. Right-click ElephantRumbleDetector.zip, choose "Extract All...",
+echo   open the extracted ElephantRumbleDetector folder, and double-click this file there.
+echo.
+pause
+exit /b 1
+:unzipped
 title Elephant rumble detector - install
 echo.
 echo   ELEPHANT RUMBLE DETECTOR - INSTALL (only needed once per computer)
@@ -31,12 +41,12 @@ exit /b 1
 echo   [1/4] Python found: %PY%
 
 rem ---------------------------------------------------------------- 2. private Python environment
-if exist ".venv\Scripts\python.exe" goto havevenv
+if exist "%BASE%.venv\Scripts\python.exe" goto havevenv
 echo   [2/4] Making a private Python environment in this folder...
-%PY% -m venv .venv
+%PY% -m venv "%BASE%.venv"
 if errorlevel 1 goto failed
 :havevenv
-set "VPY=%~dp0.venv\Scripts\python.exe"
+set "VPY=%BASE%.venv\Scripts\python.exe"
 "%VPY%" -m pip install --upgrade pip --quiet --disable-pip-version-check
 if errorlevel 1 goto failed
 
@@ -59,20 +69,20 @@ echo   [3/4] Graphics card found: %GPU%. Installing the graphics-card version (a
 :installtorch
 "%VPY%" -m pip install %TORCH% --index-url %INDEX% --disable-pip-version-check
 if errorlevel 1 goto failed
-"%VPY%" -m pip install -r requirements.txt --disable-pip-version-check
+"%VPY%" -m pip install -r "%BASE%requirements.txt" --disable-pip-version-check
 if errorlevel 1 goto failed
 
 rem ---------------------------------------------------------------- 4. AVES and a test
 echo   [4/4] Downloading AVES (378 MB, once) and testing the detector...
-if exist "use_cpu.txt" del "use_cpu.txt"
-"%VPY%" rumble_detector.py setup
+if exist "%BASE%use_cpu.txt" del "%BASE%use_cpu.txt"
+"%VPY%" "%BASE%rumble_detector.py" setup
 if not errorlevel 1 goto done
 if not defined GPU goto failed
 echo.
 echo   The graphics card did not pass the test. Trying the processor instead...
-"%VPY%" rumble_detector.py setup --device cpu
+"%VPY%" "%BASE%rumble_detector.py" setup --device cpu
 if errorlevel 1 goto failed
-echo The graphics card failed the installer's test, so the detector uses the processor. Delete this file to try the graphics card again.> "use_cpu.txt"
+echo The graphics card failed the installer's test, so the detector uses the processor. Delete this file to try the graphics card again.> "%BASE%use_cpu.txt"
 echo   The detector will use the processor on this computer (slower, but it works).
 
 :done

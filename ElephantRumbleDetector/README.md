@@ -26,17 +26,20 @@ rather than running it from the network drive.
 
 ## Step 1: Install (once per computer, 5 to 20 minutes)
 
-1. Make sure the computer is connected to the internet.
-2. Double-click **`1 - Install.bat`**.
+1. **Unzip the folder first.** Right-click `ElephantRumbleDetector.zip`, choose **Extract All...**,
+   and pick a place on this computer (for example the Desktop). Double-clicking the files while
+   they are still inside the zip doesn't work.
+2. Make sure the computer is connected to the internet.
+3. Double-click **`1 - Install.bat`**.
    - If Windows shows a blue box saying "Windows protected your PC", click **More info**, then
      **Run anyway**.
-3. Wait. A black window shows what is happening. It:
+4. Wait. A black window shows what is happening. It:
    - installs Python 3.11 if the computer doesn't have it,
    - checks whether the computer has an NVIDIA graphics card and installs the matching version
      (about 2.5 GB with a graphics card, 200 MB without),
    - downloads the AVES sound model (378 MB),
    - runs a short test.
-4. When it says **INSTALLED**, press any key to close the window.
+5. When it says **INSTALLED**, press any key to close the window.
 
 If it says **THE INSTALL DID NOT FINISH**, check the internet connection and double-click
 `1 - Install.bat` again, because it picks up where it stopped. If it fails a second time, take a screenshot of
