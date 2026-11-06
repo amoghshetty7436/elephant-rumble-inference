@@ -55,6 +55,22 @@ def test_whole_deployment(deployment, tmp_path):
     assert (out / "ABOUT THESE RESULTS.txt").exists() and not (out / "failed.txt").exists()
     folder = read_table(site / rd.FOLDER_TABLE)
     assert len(folder) == sum(len(read_table(site / f"nn03g_2023082{k}_000000.rumbles.txt")) for k in (5, 6))
+    assert (out / "all_rumbles.csv").exists()
+    probs_file = site / "nn03g_20230825_000000.probs.npy"  # the fake fingerprints give no rumbles: plant two
+    p = np.load(probs_file)
+    p[:] = 0
+    p[100:110] = 1.0
+    p[200:204] = 0.9995
+    np.save(probs_file, p)
+    rd.main(["table", "--out", str(out)])
+    every = list(csv.DictReader(open(out / "all_rumbles.csv", encoding="utf-8-sig")))
+    assert len(every) == 2 and every[0]["Score"] == "1.0000"
+    n_tables = sum(len(read_table(t)) for t in out.rglob("*" + rd.TABLE_SUFFIX) if t.name != rd.FOLDER_TABLE)
+    assert len(every) == n_tables > 0
+    r = next(r for r in every if r["Recording"] == "nn03g_20230825_000000.wav")
+    assert r["Site"] == "nn03g" and r["Date"] == "2023-08-25"
+    h, m, sec = map(int, r["Time"].split(":"))
+    assert abs(h * 3600 + m * 60 + sec - float(r["Begin (s into recording)"])) <= 1
     info = json.load(open(out / "detector.json"))
     assert info["cut_off"] == 0.993 and info["rule"]["score"] == "max"
     # running again skips what is done
@@ -63,8 +79,9 @@ def test_whole_deployment(deployment, tmp_path):
     # the cut-off can be changed afterwards
     rd.main(["table", "--out", str(out), "--min-score", "1.01"])
     assert read_table(site / rd.FOLDER_TABLE) == []
+    assert list(csv.DictReader(open(out / "all_rumbles.csv", encoding="utf-8-sig"))) == []
     rd.main(["table", "--out", str(out), "--min-score", "0"])
-    assert len(read_table(site / rd.FOLDER_TABLE)) == len(folder)
+    assert len(read_table(site / rd.FOLDER_TABLE)) == 2  # the planted rumbles
 
 
 def test_one_site_and_one_file(deployment, tmp_path):
@@ -219,6 +236,8 @@ def test_window_runs_a_deployment_and_changes_the_cut_off(deployment, tmp_path, 
     wait()
     assert app.status.cget("text").startswith("Finished"), app.log.get("1.0", "end")
     assert str(app.bar.cget("value")) == str(app.bar.cget("maximum"))
+    assert app.hours and app.hours[0] > 0 and abs(app.hours[0] - app.hours[1]) < 0.01  # bar followed the audio hours
+    assert "@progress" not in app.log.get("1.0", "end")
     assert "**3 of 3 recordings done**" in (out / "summary.md").read_text()
     d = g.CutoffDialog(app)
     d.value.set("1.01")

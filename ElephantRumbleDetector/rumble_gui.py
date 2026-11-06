@@ -64,7 +64,7 @@ class Worker:
 
     def work(self):
         restarts = 0
-        env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8")
+        env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONIOENCODING="utf-8", RUMBLE_PROGRESS="1")
         try:
             while True:
                 self.proc = subprocess.Popen(self.cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -96,9 +96,10 @@ class App:
         self.lines = queue.Queue()
         self.worker = None
         self.total = self.done = 0
+        self.hours = None
         self.out_edited = False
         root.title(TITLE)
-        root.minsize(720, 560)
+        root.minsize(680, 560)
         try:
             root.tk.call("tk", "scaling", max(1.0, root.winfo_fpixels("1i") / 72))
         except tk.TclError:
@@ -106,85 +107,92 @@ class App:
         style = ttk.Style()
         if "vista" in style.theme_names():
             style.theme_use("vista")
-        style.configure("Big.TButton", font=("Segoe UI", 11, "bold"), padding=(18, 6))
-        style.configure("Head.TLabel", font=("Segoe UI", 10, "bold"))
-        style.configure("Hint.TLabel", foreground="#555555")
+        style.configure("Title.TLabel", font=("Segoe UI", 15, "bold"))
+        style.configure("Big.TButton", font=("Segoe UI", 12, "bold"), padding=(28, 8))
+        style.configure("Hint.TLabel", foreground="#666666")
         style.configure("Status.TLabel", font=("Segoe UI", 10))
+        style.configure("Link.TLabel", foreground="#0b5cad")
 
-        main = ttk.Frame(root, padding=12)
+        main = ttk.Frame(root, padding=(16, 12))
         main.pack(fill="both", expand=True)
-        main.columnconfigure(0, weight=1)
+        main.columnconfigure(1, weight=1)
+        ttk.Label(main, text="Find elephant rumbles", style="Title.TLabel").grid(row=0, column=0, columnspan=4,
+                                                                                   sticky="w", pady=(0, 10))
 
-        # 1. recordings
-        ttk.Label(main, text="1.  Recordings", style="Head.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(main, text="A whole deployment (a folder with one folder per site), one site folder, "
-                             "or one recording.", style="Hint.TLabel").grid(row=1, column=0, sticky="w")
-        f1 = ttk.Frame(main)
-        f1.grid(row=2, column=0, sticky="ew", pady=(2, PAD))
-        f1.columnconfigure(0, weight=1)
+        # recordings
+        ttk.Label(main, text="Recordings:").grid(row=1, column=0, sticky="w", padx=(0, 8))
         self.inp = tk.StringVar(value=given or "")
         self.inp.trace_add("write", lambda *_: self.input_changed())
-        ttk.Entry(f1, textvariable=self.inp).grid(row=0, column=0, sticky="ew")
-        ttk.Button(f1, text="Choose folder...", command=self.pick_folder).grid(row=0, column=1, padx=(6, 0))
-        ttk.Button(f1, text="Choose one file...", command=self.pick_file).grid(row=0, column=2, padx=(6, 0))
+        ttk.Entry(main, textvariable=self.inp).grid(row=1, column=1, sticky="ew")
+        ttk.Button(main, text="Folder...", command=self.pick_folder).grid(row=1, column=2, padx=(6, 0))
+        ttk.Button(main, text="One file...", command=self.pick_file).grid(row=1, column=3, padx=(6, 0))
+        ttk.Label(main, text="A whole deployment, one site folder, or one recording.",
+                  style="Hint.TLabel").grid(row=2, column=1, columnspan=3, sticky="w", pady=(0, 8))
 
-        # 2. results
-        ttk.Label(main, text="2.  Save the results in", style="Head.TLabel").grid(row=3, column=0, sticky="w")
-        ttk.Label(main, text="Never inside the recordings folder. Using the same folder again carries on "
-                             "where it stopped.", style="Hint.TLabel").grid(row=4, column=0, sticky="w")
-        f2 = ttk.Frame(main)
-        f2.grid(row=5, column=0, sticky="ew", pady=(2, PAD))
-        f2.columnconfigure(0, weight=1)
+        # results
+        ttk.Label(main, text="Save results in:").grid(row=3, column=0, sticky="w", padx=(0, 8))
         self.out = tk.StringVar()
-        e = ttk.Entry(f2, textvariable=self.out)
-        e.grid(row=0, column=0, sticky="ew")
+        e = ttk.Entry(main, textvariable=self.out)
+        e.grid(row=3, column=1, sticky="ew")
         e.bind("<Key>", lambda _e: setattr(self, "out_edited", True))
-        ttk.Button(f2, text="Choose folder...", command=self.pick_out).grid(row=0, column=1, padx=(6, 0))
+        ttk.Button(main, text="Folder...", command=self.pick_out).grid(row=3, column=2, padx=(6, 0))
 
-        # 3. this computer
-        ttk.Label(main, text="3.  This computer", style="Head.TLabel").grid(row=6, column=0, sticky="w")
+        # this computer: one quiet line; the cores box only without a graphics card
         f3 = ttk.Frame(main)
-        f3.grid(row=7, column=0, sticky="ew", pady=(2, PAD))
-        self.hw = ttk.Label(f3, text="Checking for a graphics card...")
-        self.hw.grid(row=0, column=0, sticky="w")
+        f3.grid(row=4, column=1, columnspan=3, sticky="w", pady=(6, 0))
+        self.hw = ttk.Label(f3, text="", style="Hint.TLabel")
+        self.hw.pack(side="left")
         self.cores_frame = ttk.Frame(f3)
         n = os.cpu_count() or 1
-        ttk.Label(self.cores_frame, text=f"Processor cores to use (of {n}):").pack(side="left")
+        ttk.Label(self.cores_frame, text="   Cores to use:", style="Hint.TLabel").pack(side="left")
         self.cores = tk.IntVar(value=n)
-        ttk.Spinbox(self.cores_frame, from_=1, to=n, width=5, textvariable=self.cores).pack(side="left", padx=6)
-        ttk.Label(self.cores_frame, text="Fewer keeps the computer free for other work, but is slower.",
-                  style="Hint.TLabel").pack(side="left")
+        ttk.Spinbox(self.cores_frame, from_=1, to=n, width=4, textvariable=self.cores).pack(side="left", padx=4)
+        ttk.Label(self.cores_frame, text=f"of {n}", style="Hint.TLabel").pack(side="left")
         self.gpu = ""
         threading.Thread(target=self.check_gpu, daemon=True).start()
 
-        # buttons
+        # start / stop
         fb = ttk.Frame(main)
-        fb.grid(row=8, column=0, sticky="ew", pady=(4, PAD))
+        fb.grid(row=5, column=0, columnspan=4, pady=(14, 10))
         self.start_b = ttk.Button(fb, text="Start", style="Big.TButton", command=self.start)
         self.start_b.pack(side="left")
-        self.stop_b = ttk.Button(fb, text="Stop", command=self.stop, state="disabled")
-        self.stop_b.pack(side="left", padx=6)
-        self.open_b = ttk.Button(fb, text="Open results folder", command=lambda: open_folder(self.out.get()),
+        self.stop_b = ttk.Button(fb, text="Stop", command=self.stop)  # shown only while running
+
+        # progress: the whole job, then the recording being analysed
+        pf = ttk.Frame(main)
+        pf.grid(row=6, column=0, columnspan=4, sticky="ew")
+        pf.columnconfigure(1, weight=1)
+        ttk.Label(pf, text="All recordings:").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        self.bar = ttk.Progressbar(pf, mode="determinate", maximum=1)
+        self.bar.grid(row=0, column=1, sticky="ew")
+        self.status = ttk.Label(pf, text="Choose the recordings, then press Start.", style="Status.TLabel")
+        self.status.grid(row=1, column=1, sticky="w", pady=(2, 8))
+        ttk.Label(pf, text="This recording:").grid(row=2, column=0, sticky="w", padx=(0, 8))
+        self.file_bar = ttk.Progressbar(pf, mode="determinate", maximum=1)
+        self.file_bar.grid(row=2, column=1, sticky="ew")
+        self.file_status = ttk.Label(pf, text="", style="Hint.TLabel")
+        self.file_status.grid(row=3, column=1, sticky="w", pady=(2, 8))
+
+        # bottom row: open results, details, cut-off
+        fl = ttk.Frame(main)
+        fl.grid(row=8, column=0, columnspan=4, sticky="ew")
+        self.open_b = ttk.Button(fl, text="Open results folder", command=lambda: open_folder(self.out.get()),
                                  state="disabled")
         self.open_b.pack(side="left")
-        ttk.Button(fb, text="Change the cut-off of finished results...", command=self.cutoff_dialog).pack(side="right")
+        cut = ttk.Label(fl, text="Change cut-off...", style="Link.TLabel", cursor="hand2")
+        cut.pack(side="right")
+        cut.bind("<Button-1>", lambda _e: self.cutoff_dialog())
 
-        # progress
-        self.bar = ttk.Progressbar(main, mode="determinate", maximum=1)
-        self.bar.grid(row=9, column=0, sticky="ew")
-        self.status = ttk.Label(main, text="Choose the recordings, then press Start.", style="Status.TLabel")
-        self.status.grid(row=10, column=0, sticky="w", pady=(4, 4))
-
-        # messages
-        fl = ttk.Frame(main)
-        fl.grid(row=11, column=0, sticky="nsew")
-        main.rowconfigure(11, weight=1)
-        fl.columnconfigure(0, weight=1)
-        fl.rowconfigure(0, weight=1)
-        self.log = tk.Text(fl, height=12, wrap="word", font=("Consolas", 9), state="disabled",
+        # the detailed messages
+        self.log_frame = fl2 = ttk.Frame(main)
+        fl2.grid(row=9, column=0, columnspan=4, sticky="nsew", pady=(8, 0))
+        main.rowconfigure(9, weight=1)
+        fl2.columnconfigure(0, weight=1)
+        fl2.rowconfigure(0, weight=1)
+        self.log = tk.Text(fl2, height=10, wrap="word", font=("Consolas", 9), state="disabled",
                            background="#fbfbfb", relief="solid", borderwidth=1)
         self.log.grid(row=0, column=0, sticky="nsew")
-        sb = ttk.Scrollbar(fl, command=self.log.yview)
+        sb = ttk.Scrollbar(fl2, command=self.log.yview)
         sb.grid(row=0, column=1, sticky="ns")
         self.log.configure(yscrollcommand=sb.set)
         self.log.tag_configure("warn", foreground="#b35c00")
@@ -226,12 +234,12 @@ class App:
 
     def show_hardware(self):
         if self.gpu:
-            self.hw.configure(text=f"Graphics card: {self.gpu}. It does the heavy work, so this will be fast.")
+            self.hw.configure(text=f"Uses the graphics card ({self.gpu}).")
         else:
             why = ("the installer chose the processor on this computer" if os.path.exists(rd.USE_CPU_FILE)
                    else "no NVIDIA graphics card found")
-            self.hw.configure(text=f"Runs on the processor ({why}). This works, but is slower than a graphics card.")
-            self.cores_frame.grid(row=1, column=0, sticky="w", pady=(4, 0))
+            self.hw.configure(text=f"Uses the processor ({why}; slower).")
+            self.cores_frame.pack(side="left")
 
     # -- running -------------------------------------------------------------------------------
     def check_inputs(self):
@@ -270,7 +278,11 @@ class App:
         cmd += os.environ.get("RUMBLE_TEST_ARGS", "").split()  # only for the tests
         self.clear_log()
         self.total = self.done = 0
+        self.hours = None
         self.bar.configure(value=0, maximum=1)
+        self.file_bar.stop()
+        self.file_bar.configure(mode="determinate", value=0, maximum=1)
+        self.file_status.configure(text="")
         self.set_status("Starting... (looking for the recordings)")
         self.set_running(True)
         self.worker = Worker(cmd, self.lines)
@@ -282,9 +294,11 @@ class App:
             self.set_status("Stopping...")
 
     def set_running(self, running):
-        for w in (self.start_b,):
-            w.configure(state="disabled" if running else "normal")
-        self.stop_b.configure(state="normal" if running else "disabled")
+        self.start_b.configure(state="disabled" if running else "normal")
+        if running:
+            self.stop_b.pack(side="left", padx=(10, 0))
+        else:
+            self.stop_b.pack_forget()
 
     def poll(self):
         try:
@@ -301,23 +315,58 @@ class App:
             pass
         self.root.after(150, self.poll)
 
+    def show_progress(self):
+        """The bar follows the hours of audio analysed; the line under it says recordings, hours and time left."""
+        p = self.hours
+        parts = []
+        if self.total:
+            parts.append(f"{self.done} of {self.total} recordings done")
+        if p and p[1] > 0:
+            done, total, secs = p
+            self.bar.configure(maximum=total, value=min(done, total))
+            parts.append(f"{done:,.1f} of {total:,.1f} hours of audio analysed ({min(100, done / total * 100):.0f}%)")
+            if done > 0 and secs >= 15:
+                parts.append(f"about {rd.fmt_dur(max(0.0, total - done) * secs / done)} left")
+            elif done < total:
+                parts.append("working out the time left...")
+        elif self.total:
+            self.bar.configure(maximum=max(1, self.total), value=self.done)
+        if parts:
+            self.set_status(", ".join(parts))
+
+    def show_file(self, done, hours, i, n, phase, name):
+        if phase == "reading":
+            self.file_bar.configure(mode="indeterminate")
+            self.file_bar.start(15)
+            text = f"{name} ({i} of {n}): reading it from the drive..."
+        else:
+            self.file_bar.stop()
+            self.file_bar.configure(mode="determinate", maximum=max(hours, 1e-6), value=min(done, hours))
+            text = (f"{name} ({i} of {n}): finished" if phase == "done" else
+                    f"{name} ({i} of {n}): {done:.1f} of {hours:.1f} hours analysed")
+        self.file_status.configure(text=text)
+
     def add_line(self, line):
+        m = re.match(r"@progress ([\d.]+) ([\d.]+) ([\d.]+)(?: ([\d.]+) ([\d.]+) (\d+) (\d+) (\S+) (.*))?", line)
+        if m:  # for the bars only, not shown in the messages
+            self.hours = tuple(float(x) for x in m.groups()[:3])
+            if m.group(4) is not None:
+                self.show_file(float(m.group(4)), float(m.group(5)), int(m.group(6)), int(m.group(7)),
+                               m.group(8), m.group(9))
+            self.show_progress()
+            return
         m = re.search(r"(\d+) recordings in \d+ folder\(s\): (\d+) already done, (\d+) to do", line)
         if m:
             self.total, self.done = int(m.group(3)), 0
             self.bar.configure(maximum=max(1, self.total), value=0)
             already = int(m.group(2))
-            self.set_status(f"{self.total} recordings to do" + (f" ({already} already done earlier)" if already else ""))
+            self.set_status(f"{self.total} recordings to do" + (f" ({already} already done earlier)" if already else "")
+                            + "; reading how long they are...")
             self.open_b.configure(state="normal")
         m = re.search(r"\[(\d+)/(\d+)\] (.*)", line)
         if m:
             self.done, self.total = int(m.group(1)), int(m.group(2))
-            self.bar.configure(maximum=max(1, self.total), value=self.done)
-            left = re.search(r"about (.+) left", line)
-            self.set_status(f"{self.done} of {self.total} recordings done" + (f", about {left.group(1)} left" if left else ""))
-        if "hours of this recording analysed" in line and self.total:
-            self.set_status(f"{self.done} of {self.total} recordings done; working on the next one"
-                            f" ({line.split('analysed')[0].strip().split(' ', 1)[1]} analysed)")
+            self.show_progress()
         tag = ("bad" if re.search(r"SKIPPED|STOPPED|Traceback|Error|Can't find|could not", line)
                else "warn" if "WARNING" in line else "good" if re.search(r"all \d+ recordings have", line) else None)
         self.log.configure(state="normal")
@@ -327,6 +376,8 @@ class App:
 
     def finished(self, code):
         self.worker = None
+        self.file_bar.stop()
+        self.file_bar.configure(mode="determinate")
         self.set_running(False)
         out = self.out.get()
         self.open_b.configure(state="normal" if os.path.isdir(out) else "disabled")

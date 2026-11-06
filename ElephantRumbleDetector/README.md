@@ -51,10 +51,9 @@ the window and send it to Amogh.
 
 ## Step 2: Find rumbles
 
-1. Double-click **`2 - Find rumbles.bat`**. The detector's window opens.
+1. Double-click **`2 - Find rumbles.bat`**. The "Find elephant rumbles" window opens.
 
-2. **1. Recordings:** click **Choose folder...** (or **Choose one file...**) and pick your recordings.
-   You can give it any of these:
+2. **Recordings:** click **Folder...** (or **One file...**) and pick what to analyse:
 
    | You choose | Example | It analyses |
    |---|---|---|
@@ -62,25 +61,26 @@ the window and send it to Amogh.
    | One site folder | `L:\ELP\Projects\Nouabale\nn_sounds\nn_202306_jun_dep17\nn03g_202306_jun` | every recording of that site |
    | One recording | `...\nn03g_202306_jun\nn03g_20230825_134525.wav` | just that recording |
 
-   You can also paste a path into the box (in File Explorer: click the address bar, **Ctrl+C**),
-   or drag a folder or file onto `2 - Find rumbles.bat`.
+   You can also paste a path into the box, or drag a folder or file onto `2 - Find rumbles.bat`.
 
-3. **2. Save the results in:** it fills in `Desktop\Rumble Results\<name of what you chose>`.
-   Keep that, or click **Choose folder...** to pick another place (it can be on the network
-   drive). Results are never saved inside the recordings folder.
+3. **Save results in:** it fills in `Desktop\Rumble Results\<name of what you chose>`. Keep it, or
+   click **Folder...** to pick another place (it can be on the network drive, but not inside the
+   recordings folder).
 
-4. **3. This computer:** it shows whether an NVIDIA graphics card was found.
-   - **With a graphics card** there's nothing to set: the card does the heavy work.
-   - **Without one** there is a **"Processor cores to use"** box. Leave it at the maximum, or lower
-     it (for example to half) if you want to keep using the computer for other work while it runs.
+4. The grey line under it says whether the **graphics card** or the **processor** will be used.
+   Without a graphics card there is also a **Cores to use** box: leave it at the maximum, or lower
+   it (for example to half) to keep the computer free for other work.
 
-5. Press **Start**. The bar and the line under it show how many recordings are done and the time
-   left; the box below shows each finished recording and how many rumbles it found.
+5. Press **Start**. Two bars show the progress:
+   - **All recordings:** how many recordings and hours of audio are done, and the time left.
+   - **This recording:** the recording being analysed right now.
+
+   The box at the bottom lists each finished recording and how many rumbles it found.
    **Keep the computer plugged in.** The detector stops Windows from going to sleep, but don't
    shut the computer down or let Windows Update restart it.
 
-6. When it's finished it asks whether to open the results folder. The **Open results folder**
-   button does the same at any time.
+6. When it's finished it asks whether to open the results folder (the **Open results folder**
+   button does the same at any time).
 
 ### How long does it take?
 
@@ -117,12 +117,17 @@ The results folder has the same subfolders as your recordings (one per site). St
 | **`<site>\_all_rumbles.txt`** | **One Raven table for the whole site**, with every rumble from all its recordings, one recording after another. This is usually the one you want. |
 | `<site>\<recording>.rumbles.txt` | The Raven table of one recording. |
 | `<site>\<recording>.probs.npy` | The detector's raw scores. You don't need to open these; they make changing the cut-off quick. |
+| **`all_rumbles.csv`** | **Every rumble in one list, for Excel** (double-click it): site, recording, **date and clock time** (worked out from the recording's file name), start and end in the recording, score, and which Raven table it is in. |
 | **`summary.md`** / `summary.csv` | Per site: recordings done, hours, rumbles found, rumbles per day. `summary.csv` opens in Excel and `summary.md` in Notepad. |
 | `failed.txt` | Only there if some recordings could not be read, with the reason for each. |
 | `run_log.txt` | Everything the window showed. Send this to Amogh if something goes wrong. |
 | `timings.csv`, `detector.json` | Details of each recording's run, and the settings and computer used. |
 
 ### Opening the results in Raven Pro
+
+The tables are tab-separated `.txt` files, the same format as ELP's hand-made ground-truth tables,
+because that is what Raven opens. (Excel opens them too: right-click > Open with > Excel. For
+Excel, `all_rumbles.csv` is usually handier.)
 
 - **One recording:** open the recording in Raven (*File > Open Sound Files*), then
   *File > Open Selection Table* and pick its `.rumbles.txt`.
@@ -160,7 +165,7 @@ On ELP's validation days, that setting found 80% of the rumbles.
 - **Lower** cut-off (e.g. 0.95): finds more rumbles, but gives more false alarms to check.
 - **Higher** cut-off (e.g. 0.999): fewer false alarms, but misses more rumbles.
 
-To change it for results you already have, click **Change the cut-off of finished results...**
+To change it for results you already have, click **Change cut-off...**
 in the window, choose the results folder, type the new number and click **Rewrite the tables**. It takes seconds and doesn't need the
 recordings or a graphics card. You can always go back to 0.993.
 

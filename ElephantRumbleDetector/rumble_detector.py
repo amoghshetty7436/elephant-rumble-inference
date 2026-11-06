@@ -273,7 +273,7 @@ class Embedder:
             e = self.model.extract_features(y.view(1, -1).to(self.device))[0][-1][0].float().cpu()
         return e / e.norm(p=2, dim=1, keepdim=True)
 
-    def whole_file(self, y, beat=None, chunk_seconds=3600, context=16):
+    def whole_file(self, y, beat=None, chunk_seconds=3600, context=16, step=None):
         """An hour at a time, with ~10 s of audio on each side of every hour."""
         import torch
         chunk, ctx = chunk_seconds * AVES_SR, context * SAMPLES_PER_FRAME
@@ -291,6 +291,8 @@ class Embedder:
             out.append(e[a:b])
             if post.shape[0] == 0 and e.shape[0] > 1:
                 out.append(e[-2:-1])  # AVES drops the last frame without audio after it
+            if step:
+                step((s + cur.shape[0]) / AVES_SR / 3600)
         return torch.cat(out) if out else torch.empty(0, 768)
 
 
@@ -366,16 +368,16 @@ class Detector:
                      f"this works but is much slower than a graphics card")
         log(f"detector {self.name}; running on {where}")
 
-    def probs(self, y, beat=None):
+    def probs(self, y, beat=None, step=None):
         """Rumble probability of every 0.64 s frame (numpy float32)."""
         import numpy as np
         import torch
         try:
-            emb = self.embed.whole_file(y, beat)
+            emb = self.embed.whole_file(y, beat, step=step)
         except torch.cuda.OutOfMemoryError:  # a small graphics card: smaller pieces
             torch.cuda.empty_cache()
             log("  the graphics card ran out of memory; trying again in 15-minute pieces")
-            emb = self.embed.whole_file(y, beat, chunk_seconds=900)
+            emb = self.embed.whole_file(y, beat, chunk_seconds=900, step=step)
         if emb.shape[0] == 0:
             return np.zeros(0, dtype=np.float32)
         ctx, chunk = self.ctx, 20_000
@@ -391,8 +393,10 @@ class Detector:
 class FakeEmbedder:
     """For the tests: random-ish fingerprints from the audio, no AVES download."""
 
-    def whole_file(self, y, beat=None, chunk_seconds=None):
+    def whole_file(self, y, beat=None, chunk_seconds=None, step=None):
         import torch
+        if step:
+            step(y.shape[0] / AVES_SR / 3600)
         n = y.shape[0] // SAMPLES_PER_FRAME
         if n < 2:
             return torch.empty(0, 768)
@@ -591,12 +595,24 @@ def run(a, wd):
         os.remove(os.path.join(a.out, "failed.txt"))  # this run retries them; it lists what still fails
     done_hours, t_start, failed = 0.0, time.time(), []
     total_hours = 0.0
+
+    def progress(hours, file_done=0.0, file_hours=0.0, i=0, phase="-", name=""):
+        """A line for the window's two progress bars: hours of audio analysed, hours in all, seconds so far;
+        then the current recording: hours analysed, its hours, its number, what it is doing, its name."""
+        if os.environ.get("RUMBLE_PROGRESS"):
+            screen = getattr(sys.stdout, "out", sys.stdout)  # not into run_log.txt
+            screen.write(f"@progress {hours:.4f} {total_hours:.4f} {time.time() - t_start:.1f} {file_done:.4f} "
+                         f"{file_hours:.4f} {i} {len(todo)} {phase} {name}\n")
+            screen.flush()
+
     if a.estimate and todo:
         log("reading the length of each recording (for the time left)...")
         for k, (p, _) in enumerate(todo):
             wd.beat("reading the length of each recording")
             total_hours += audio_info(p)["hours"]
         log(f"{total_hours:,.1f} hours of audio to do ({total_hours / 24:,.1f} days)")
+        t_start = time.time()  # the time left counts from here
+        progress(0.0)
     left_in_folder = {}
     for _, b in todo:
         left_in_folder[os.path.dirname(b)] = left_in_folder.get(os.path.dirname(b), 0) + 1
@@ -619,13 +635,16 @@ def run(a, wd):
         queue(i + a.prefetch)
         try:
             t0 = time.time()
+            progress(done_hours, 0, 0, i + 1, "reading", os.path.basename(src))
             wd.beat(f"reading {src} from the drive")
             y, t_load = ahead.pop(i).result()
             waited = time.time() - t0
             sr = audio_info(src)["sr"]
             hours = y.shape[0] / AVES_SR / 3600
             t1 = time.time()
-            prob = det.probs(y, wd.beat)
+            name = os.path.basename(src)
+            progress(done_hours, 0, hours, i + 1, "analysing", name)
+            prob = det.probs(y, wd.beat, lambda h: progress(done_hours + h, h, hours, i + 1, "analysing", name))
             t3 = time.time()
             wd.beat(f"writing the results of {src}")
             os.makedirs(long_path(os.path.dirname(base)), exist_ok=True)
@@ -651,6 +670,7 @@ def run(a, wd):
                      f"{t4 - t0:.1f}", len(rows), f"{float(prob.max()) if len(prob) else 0:.4f}"])
         tf.flush()
         done_hours += hours
+        progress(done_hours, hours, hours, i + 1, "done", os.path.basename(src))
         el = time.time() - t_start
         left = (f", about {fmt_dur(max(0.0, total_hours - done_hours) * el / done_hours)} left"
                 if total_hours and done_hours > 0 else "")
@@ -664,6 +684,8 @@ def run(a, wd):
     pool.shutdown(wait=False, cancel_futures=True)
     tf.close()
     missing = write_summary(a.out, jobs, info, min_score, failed)
+    n = write_all_csv(a.out, jobs, det.rule, min_score)
+    log(f"every rumble in one list for Excel: {os.path.join(a.out, ALL_CSV)} ({n} rumbles)")
     log(f"done with {done_hours:,.1f} h of audio in {fmt_dur(time.time() - t_start)}")
     if failed:
         log(f"WARNING: {len(failed)} recording(s) could not be analysed; the list and the reasons are in "
@@ -765,6 +787,53 @@ def write_summary(out, jobs, info, min_score, failed):
     return missing
 
 
+ALL_CSV = "all_rumbles.csv"
+
+
+def recording_start(path):
+    """When an ELP recording starts, from its name (..._20230825_134525.wav), or None."""
+    import datetime as dt
+    m = re.search(r"(\d{8})_(\d{6})(?!\d)", os.path.basename(path))
+    if not m:
+        return None
+    try:
+        return dt.datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
+
+
+def write_all_csv(out, jobs, rule, min_score):
+    """all_rumbles.csv: every rumble of every recording in one list that opens in Excel, with its
+    date and clock time when the file name says when the recording started."""
+    import datetime as dt
+    import numpy as np
+    rows = []
+    for src, base in jobs:
+        p = long_path(base + PROBS_SUFFIX)
+        if not os.path.exists(p):
+            continue
+        prob = np.load(p).astype(np.float32)
+        t0 = recording_start(src)
+        for bt, et, _, _, sc in file_rows(prob, rule, min_score, src):
+            when = t0 + dt.timedelta(seconds=round(bt)) if t0 else None
+            rows.append([site_of(src), os.path.basename(src), when.strftime("%Y-%m-%d") if when else "",
+                         when.strftime("%H:%M:%S") if when else "", f"{bt:.2f}", f"{et:.2f}", f"{et - bt:.2f}",
+                         f"{sc:.4f}", os.path.relpath(base, out) + TABLE_SUFFIX, src])
+    tmp = os.path.join(out, ALL_CSV + ".tmp")
+    with open(long_path(tmp), "w", newline="", encoding="utf-8-sig") as f:  # the BOM lets Excel read it right
+        w = csv.writer(f)
+        w.writerow(["Site", "Recording", "Date", "Time", "Begin (s into recording)", "End (s into recording)",
+                    "Duration (s)", "Score", "Raven table", "Recording path"])
+        w.writerows(rows)
+    try:
+        os.replace(long_path(tmp), long_path(os.path.join(out, ALL_CSV)))
+    except PermissionError:  # open in Excel right now: leave a copy next to it
+        alt = os.path.join(out, f"all_rumbles_{time.strftime('%Y%m%d_%H%M%S')}.csv")
+        os.replace(long_path(tmp), long_path(alt))
+        log(f"WARNING {ALL_CSV} is open in another program (Excel?); wrote {alt} instead")
+    return len(rows)
+
+
 def write_about(out, min_score, cut_off):
     text = f"""WHAT IS IN THIS FOLDER
 ======================
@@ -783,6 +852,9 @@ The folders here mirror the folders of the recordings. In each one:
 
 In this folder:
 
+  all_rumbles.csv           EVERY RUMBLE IN ONE LIST, for Excel (double-click it): site,
+                            recording, date and clock time (from the file name), start and end
+                            in the recording, score.
   summary.md / summary.csv  Per site: recordings done, hours, rumbles found, rumbles per day.
                             summary.csv opens in Excel; summary.md opens in Notepad.
   failed.txt                Only there if some recordings could not be read, with the reason.
@@ -830,6 +902,7 @@ def cmd_table(a):
     with open(dj, "w") as f:
         json.dump(info, f, indent=1)
     write_summary(a.out, jobs, info, min_score, [])
+    write_all_csv(a.out, jobs, rule, min_score)
     write_about(a.out, min_score, info["cut_off"])
     log(f"rewrote {len(jobs)} tables keeping Scores of at least {min_score}: {n} rumbles. summary.md updated.")
     return 0
