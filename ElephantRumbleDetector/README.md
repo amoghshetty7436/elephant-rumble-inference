@@ -5,7 +5,7 @@ recording it makes a **Raven selection table** with one box for each rumble it f
 check them in Raven Pro.
 
 It works on Windows computers with or without a graphics card. You don't need to know any
-programming: you double-click a file, then paste a folder path.
+programming: you double-click a file, pick your recordings in a window, and press **Start**.
 
 ---
 
@@ -14,10 +14,9 @@ programming: you double-click a file, then paste a folder path.
 | File | What it is for |
 |---|---|
 | **1 - Install.bat** | Sets the detector up. Run it **once** on each computer. |
-| **2 - Find rumbles.bat** | Runs the detector. Use it every time you have recordings to check. |
-| 3 - Change cut-off (optional).bat | Makes finished results stricter or looser without running again (see below). |
+| **2 - Find rumbles.bat** | Opens the detector's window. Use it every time you have recordings to check. |
 | README.md | These instructions. |
-| rumble_detector.py, model\\, requirements.txt | The detector itself. Don't move or change these. |
+| rumble_detector.py, rumble_gui.py, model\\, requirements.txt | The detector itself. Don't move or change these. |
 
 **Keep the whole folder together.** Copy it to your own computer (for example to the Desktop)
 rather than running it from the network drive.
@@ -52,36 +51,36 @@ the window and send it to Amogh.
 
 ## Step 2: Find rumbles
 
-1. Double-click **`2 - Find rumbles.bat`**. A black window opens and asks three questions.
+1. Double-click **`2 - Find rumbles.bat`**. The detector's window opens.
 
-2. **"Recordings:"** paste the location of your recordings. You can give it any of these:
+2. **1. Recordings:** click **Choose folder...** (or **Choose one file...**) and pick your recordings.
+   You can give it any of these:
 
-   | You give it | Example | It analyses |
+   | You choose | Example | It analyses |
    |---|---|---|
    | A whole deployment (a folder with one subfolder per site) | `L:\ELP\Projects\Nouabale\nn_sounds\nn_202306_jun_dep17` | every recording of every site |
    | One site folder | `L:\ELP\Projects\Nouabale\nn_sounds\nn_202306_jun_dep17\nn03g_202306_jun` | every recording of that site |
    | One recording | `...\nn03g_202306_jun\nn03g_20230825_134525.wav` | just that recording |
 
-   **How to copy a path:** open the folder in File Explorer, click in the address bar at the top,
-   press **Ctrl+C**. In the black window, **right-click** to paste, then press **Enter**.
-   To copy the path of one file, hold **Shift**, right-click the file, and choose **Copy as path**.
+   You can also paste a path into the box (in File Explorer: click the address bar, **Ctrl+C**),
+   or drag a folder or file onto `2 - Find rumbles.bat`.
 
-   *Shortcut:* you can also drag a folder or a file onto `2 - Find rumbles.bat`.
+3. **2. Save the results in:** it fills in `Desktop\Rumble Results\<name of what you chose>`.
+   Keep that, or click **Choose folder...** to pick another place (it can be on the network
+   drive). Results are never saved inside the recordings folder.
 
-3. **"Results folder:"** press **Enter** to save the results to
-   `Desktop\Rumble Results\<name of what you gave it>`, or paste another folder (it can be on
-   the network drive). Results are never saved inside the recordings folder.
+4. **3. This computer:** it shows whether an NVIDIA graphics card was found.
+   - **With a graphics card** there's nothing to set: the card does the heavy work.
+   - **Without one** there is a **"Processor cores to use"** box. Leave it at the maximum, or lower
+     it (for example to half) if you want to keep using the computer for other work while it runs.
 
-4. **"Cores:"** (only asked on computers without an NVIDIA graphics card; with one, the graphics
-   card does the heavy work and this question is skipped). Press **Enter** to let the detector
-   use the whole processor. If you want to keep using the computer for other work while it
-   runs, type a smaller number (for example half of what it says the computer has).
+5. Press **Start**. The bar and the line under it show how many recordings are done and the time
+   left; the box below shows each finished recording and how many rumbles it found.
+   **Keep the computer plugged in.** The detector stops Windows from going to sleep, but don't
+   shut the computer down or let Windows Update restart it.
 
-5. Leave it running. Each line shows a finished recording, how many rumbles it found and the
-   time left. **Keep the computer plugged in.** The detector stops Windows from going to sleep, but
-   don't shut the computer down or let Windows Update restart it.
-
-6. When it says **FINISHED**, the results folder opens by itself.
+6. When it's finished it asks whether to open the results folder. The **Open results folder**
+   button does the same at any time.
 
 ### How long does it take?
 
@@ -98,16 +97,13 @@ slow it down; if it's very slow, copy the recordings to the computer first.
 
 ### Stopping and carrying on
 
-You can close the window at any time. Next time, give it **the same recordings and the same
-results folder**: it skips everything already done and carries on. It also carries on by
+Press **Stop** (or close the window) at any time. Next time, choose **the same recordings and the
+same results folder** and press Start: it skips everything already done and carries on. It also carries on by
 itself if:
 
 - **the network drive stops responding:** it waits up to 10 minutes for the drive to come back.
   If the drive is still gone, it stops and asks you to start again later.
 - **it gets stuck** (nothing happens for 20 minutes): it restarts by itself.
-
-> Don't click inside the black window while it runs. The detector turns off the Windows setting
-> that pauses programs when you click, but if the window ever seems frozen, press **Esc** once.
 
 ---
 
@@ -164,18 +160,24 @@ On ELP's validation days, that setting found 80% of the rumbles.
 - **Lower** cut-off (e.g. 0.95): finds more rumbles, but gives more false alarms to check.
 - **Higher** cut-off (e.g. 0.999): fewer false alarms, but misses more rumbles.
 
-To change it for results you already have, double-click **`3 - Change cut-off (optional).bat`**,
-paste the results folder, and type the new number. It takes seconds and doesn't need the
+To change it for results you already have, click **Change the cut-off of finished results...**
+in the window, choose the results folder, type the new number and click **Rewrite the tables**. It takes seconds and doesn't need the
 recordings or a graphics card. You can always go back to 0.993.
 
-What each cut-off gave on ELP's test days (Nouabalé "Sample A"):
+What each cut-off gave with this model on ELP's test days. "Found" is the share of the hand-marked
+rumbles it found (recall); "real" is the share of its detections that were rumbles (precision).
+Sample A is 54 Nouabalé-Ndoki forest days; Sample B is 2024's additional test days; the vehicle
+days have no elephants, so every detection there is a false alarm.
 
-| Cut-off | Rumbles found | Detections that are real rumbles | False alarms per hour |
-|---|---|---|---|
-| 0.95 | 87% | 67% | 0.24 |
-| 0.99 | 80% | 84% | 0.08 |
-| 0.993 (standard) | about 78% | about 86% | about 0.07 |
-| 0.999 | 68% | 93% | 0.02 |
+| Cut-off | Sample A: found / real | Sample B: found / real | False alarms per hour (Sample A) | False alarms per hour (vehicle days) |
+|---|---|---|---|---|
+| 0.90 | 89% / 57% | 97% / 46% | 0.39 | 1.04 |
+| 0.95 | 86% / 70% | 95% / 59% | 0.21 | 0.68 |
+| 0.98 | 81% / 81% | 93% / 74% | 0.10 | 0.35 |
+| 0.99 | 77% / 86% | 91% / 80% | 0.07 | 0.18 |
+| **0.993 (standard)** | **75% / 88%** | **90% / 83%** | **0.06** | **0.15** |
+| 0.998 | 69% / 93% | 87% / 89% | 0.03 | 0.07 |
+| 0.999 | 65% / 95% | 85% / 92% | 0.02 | 0.06 |
 
 ---
 
@@ -184,10 +186,11 @@ What each cut-off gave on ELP's test days (Nouabalé "Sample A"):
 | What you see | What to do |
 |---|---|
 | "The detector is not installed on this computer yet" | Run `1 - Install.bat` first. |
+| A black window with questions opens instead of the detector's window | The computer's Python has no window toolkit (tkinter). It still works: answer the questions in the black window (paste paths with a right-click). |
 | "Can't find a folder or sound file at ..." | The path is wrong or the drive isn't connected. Check that you can open it in File Explorer, then paste it again. |
 | "No sound files found there" | The folder has no `.wav` / `.flac` / `.aif` files, even in its subfolders. |
 | It says it runs "on the processor" but the computer has a graphics card | Only NVIDIA cards are used. If it's NVIDIA, update its driver (nvidia.com/drivers), delete the `.venv` folder and run `1 - Install.bat` again. |
-| The computer becomes slow while it runs | Close it, start again, and type fewer **Cores**. It carries on where it stopped. |
+| The computer becomes slow while it runs (no graphics card) | Press **Stop**, lower **Processor cores to use**, and press **Start** again. It carries on where it stopped. |
 | Anything else | Send `run_log.txt` from the results folder (or a screenshot) to Amogh. |
 
 ---
@@ -205,6 +208,9 @@ What each cut-off gave on ELP's test days (Nouabalé "Sample A"):
   probabilities match the lab run's to within 0.0014 and the Raven table is identical, and on the
   public Sample A day `nn06a_20191008` it found 140 of the 152 hand-marked rumbles, with 59 of
   its 61 detections real (CPU, 3 min 13 s for the 24 hours on 4 cores).
+- **The window** is `rumble_gui.py` (tkinter, part of Python). It runs `rumble_detector.py run`
+  in the background, restarts it if it stalls, and shows its output. `rumble_detector.py` with
+  no arguments asks the same questions in the console instead.
 - **Command line** (inside the folder, with `.venv\Scripts\python.exe`):
 
   ```

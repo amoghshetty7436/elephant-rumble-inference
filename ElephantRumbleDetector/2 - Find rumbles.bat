@@ -20,6 +20,12 @@ echo.
 pause
 exit /b 1
 :run
+rem The window. If it can't open (tkinter missing), fall back to the questions in this black window.
+"%BASE%.venv\Scripts\python.exe" -c "import tkinter" >nul 2>&1
+if errorlevel 1 goto text
+start "" "%BASE%.venv\Scripts\pythonw.exe" "%BASE%rumble_gui.py" %*
+exit /b 0
+:text
 "%BASE%.venv\Scripts\python.exe" "%BASE%rumble_detector.py" %*
 echo.
 pause

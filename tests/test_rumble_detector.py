@@ -182,3 +182,50 @@ def test_alarm_rule_matches_the_study():
         p = np.clip(rng.random(3000) ** rng.uniform(0.5, 8), 0, 1).astype(np.float32)
         for x, y in zip(im.alarms(p, rule), rd.alarms(p, rule)):
             assert np.array_equal(x, y)
+
+
+def test_window_runs_a_deployment_and_changes_the_cut_off(deployment, tmp_path, monkeypatch):
+    """The window (rumble_gui.py): choose, Start, wait, then change the cut-off. Needs a display."""
+    tk = pytest.importorskip("tkinter")
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip("no display")
+    monkeypatch.setenv("RUMBLE_TEST_ARGS", " ".join(FAKE))
+    import rumble_gui as g
+    from tkinter import messagebox
+    said = []
+    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: said.append(a[1]) or False)
+    monkeypatch.setattr(messagebox, "showwarning", lambda *a, **k: said.append(a[1]))
+    monkeypatch.setattr(messagebox, "showerror", lambda *a, **k: said.append(a[1]))
+    app = g.App(root)
+    app.start()
+    assert said and "Choose the recordings" in said[-1] and app.worker is None
+    app.inp.set(str(deployment))
+    assert app.out.get().endswith(os.path.join("Rumble Results", "nn_202306_jun_dep17"))
+    out = tmp_path / "window_results"
+    app.out.set(str(out))
+    app.out_edited = True
+
+    def wait():
+        import time
+        t0 = time.time()
+        while app.worker and time.time() - t0 < 120:
+            root.update()
+            time.sleep(0.05)
+        root.update()
+
+    app.start()
+    wait()
+    assert app.status.cget("text").startswith("Finished"), app.log.get("1.0", "end")
+    assert str(app.bar.cget("value")) == str(app.bar.cget("maximum"))
+    assert "**3 of 3 recordings done**" in (out / "summary.md").read_text()
+    d = g.CutoffDialog(app)
+    d.value.set("1.01")
+    d.apply()
+    assert "between 0 and 1" in said[-1]
+    d.value.set("0.999")
+    d.apply()
+    wait()
+    assert json.load(open(out / "detector.json"))["min_score_in_tables"] == 0.999
+    root.destroy()
