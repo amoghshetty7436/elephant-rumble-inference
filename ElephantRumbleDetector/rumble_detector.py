@@ -911,6 +911,32 @@ def interactive(given=None):
         break
     print(f"\n  Results: {out}\n")
     n = os.cpu_count() or 1
+    if has_nvidia_gpu():
+        cores = 0
+        print("  An NVIDIA graphics card was found: it does the heavy work, so there is no need")
+        print("  to choose processor cores (the detector only uses a few of them).\n")
+    else:
+        cores = ask_cores(n)
+    if os.path.exists(os.path.join(out, "detector.json")):
+        print("  This results folder already has results: recordings that are done will be skipped.\n")
+    cmd = [sys.executable, os.path.abspath(__file__), "run", inp, "--out", out] + (["--cores", str(cores)] if cores else [])
+    cmd += os.environ.get("RUMBLE_TEST_ARGS", "").split()  # only for the tests
+    return run_with_restarts(cmd, out)
+
+
+def has_nvidia_gpu():
+    """Without importing PyTorch (slow): does nvidia-smi see a card, and hasn't the installer
+    switched this computer to the processor?"""
+    if os.path.exists(USE_CPU_FILE) or os.environ.get("RUMBLE_TEST_ARGS"):
+        return False
+    try:
+        r = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True, timeout=20)
+        return r.returncode == 0 and "GPU" in r.stdout
+    except Exception:  # noqa: BLE001 - no driver, not found, ...
+        return False
+
+
+def ask_cores(n):
     print(f"  This computer has {n} processor cores. How many may the detector use?")
     print(f"  Press Enter to use all {n}, or type a smaller number to keep some free for other work.")
     while True:
@@ -923,10 +949,10 @@ def interactive(given=None):
             break
         print(f"  Type a number from 1 to {n}, or just press Enter.")
     print(f"\n  Cores: {cores or n}\n")
-    if os.path.exists(os.path.join(out, "detector.json")):
-        print("  This results folder already has results: recordings that are done will be skipped.\n")
-    cmd = [sys.executable, os.path.abspath(__file__), "run", inp, "--out", out] + (["--cores", str(cores)] if cores else [])
-    cmd += os.environ.get("RUMBLE_TEST_ARGS", "").split()  # only for the tests
+    return cores
+
+
+def run_with_restarts(cmd, out):
     restarts = 0
     while True:
         code = subprocess.call(cmd)

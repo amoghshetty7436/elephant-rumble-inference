@@ -72,9 +72,10 @@ the window and send it to Amogh.
    `Desktop\Rumble Results\<name of what you gave it>`, or paste another folder (it can be on
    the network drive). Results are never saved inside the recordings folder.
 
-4. **"Cores:"** press **Enter** to let the detector use the whole processor. If you want to keep
-   using the computer for other work while it runs, type a smaller number (for example half of
-   what it says the computer has). This matters most on laptops without a graphics card.
+4. **"Cores:"** (only asked on computers without an NVIDIA graphics card; with one, the graphics
+   card does the heavy work and this question is skipped). Press **Enter** to let the detector
+   use the whole processor. If you want to keep using the computer for other work while it
+   runs, type a smaller number (for example half of what it says the computer has).
 
 5. Leave it running. Each line shows a finished recording, how many rumbles it found and the
    time left. **Keep the computer plugged in.** The detector stops Windows from going to sleep, but
