@@ -1,0 +1,4 @@
+.venv/
+model/aves/
+use_cpu.txt
+__pycache__/
