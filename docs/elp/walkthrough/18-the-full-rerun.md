@@ -2,7 +2,7 @@
 
 ## Start it (once, then leave the PC until Tuesday)
 
-1. Put `study.py` and `cpu_speed.py` in your `tools` folder, next to `improve.py`. It is on the branch `claude/project-thread-ls3rsg` and in `retraining/study/` of this project. No existing file changes.
+1. Put `study.py` and `cpu_speed.py` in your `tools` folder, next to `improve.py`. It is on `main` and in `retraining/study/` of this project. No existing file changes.
 2. Plug the PC in. The script stops Windows from sleeping while it runs, but it can't stop Windows Update from restarting the PC, so pause updates for a week.
 3. In PowerShell, in the repository folder:
 

@@ -1,0 +1,370 @@
+<title>Rumble Detector Candidates</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column; each candidate is a section with its diagram, then four short facts. */
+:root {
+  --bg: #f6f7f4;
+  --surface: #ffffff;
+  --ink: #1f2a24;
+  --muted: #5d6a62;
+  --line: #d5dbd4;
+  --frozen: #dbe4ec;   /* parts that are not trained */
+  --frozen-ink: #2f4a63;
+  --train: #f3d9a8;    /* parts we train */
+  --train-ink: #6b4300;
+  --fixed: #eceee9;    /* fixed signal processing */
+  --accent: #9a5b00;
+  --good: #2f6b3f;
+  --mid: #8a6a00;
+  --low: #7a4b4b;
+  --display: "Newsreader", Georgia, "Times New Roman", serif;
+  --body: "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141a17; --surface: #1b2420; --ink: #e5ebe6; --muted: #9faea4; --line: #33403a;
+  --frozen: #23384b; --frozen-ink: #c6d8ea; --train: #4a3612; --train-ink: #f5d9a2; --fixed: #26302b;
+  --accent: #e0a343; --good: #7fc28f; --mid: #d9bb5b; --low: #d49a9a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #141a17; --surface: #1b2420; --ink: #e5ebe6; --muted: #9faea4; --line: #33403a;
+  --frozen: #23384b; --frozen-ink: #c6d8ea; --train: #4a3612; --train-ink: #f5d9a2; --fixed: #26302b;
+  --accent: #e0a343; --good: #7fc28f; --mid: #d9bb5b; --low: #d49a9a; color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--body); }
+.wrap { max-width: 880px; margin: 0 auto; padding-block: 40px 80px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 40px; }
+h1, h2 { font-family: var(--display); font-weight: 600; line-height: 1.15; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2rem, 5vw, 2.8rem); }
+h2 { font-size: 1.6rem; }
+h3 { font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+.lede { font-size: 1.1rem; color: var(--muted); }
+header { display: grid; gap: 14px; }
+.legend { display: flex; flex-wrap: wrap; gap: 10px 18px; font-size: 0.9rem; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.sw { width: 18px; height: 14px; border-radius: 3px; border: 1px solid var(--line); display: inline-block; }
+.sw.frozen { background: var(--frozen); } .sw.train { background: var(--train); } .sw.fixed { background: var(--fixed); }
+.sw.rule { background: transparent; border: 1.5px dashed var(--muted); }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 0.92rem; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+td a { color: var(--ink); text-decoration-color: var(--line); text-underline-offset: 3px; }
+.gain { font-weight: 600; white-space: nowrap; }
+.gain.high { color: var(--good); } .gain.mid { color: var(--mid); } .gain.low { color: var(--low); }
+.pick { font-family: var(--mono); font-size: 0.75rem; color: var(--accent); white-space: nowrap; }
+
+section.model { display: grid; gap: 16px; padding-top: 28px; border-top: 1px solid var(--line); }
+.model-head { display: grid; gap: 6px; }
+.tag { font-family: var(--mono); font-size: 0.8rem; color: var(--accent); }
+.diagram { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.diagram svg { display: block; min-width: 700px; width: 100%; height: auto; }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 28px; }
+.facts div { min-width: 0; }
+.facts p { font-size: 0.95rem; }
+@media (max-width: 640px) { .facts { grid-template-columns: 1fr; } }
+.ref { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 18px; display: grid; gap: 12px; }
+.mono { font-family: var(--mono); font-size: 0.88em; }
+.top { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; max-width: 70ch; }
+
+svg .n-frozen rect { fill: var(--frozen); stroke: none; }
+svg .n-frozen text { fill: var(--frozen-ink); }
+svg .n-train rect { fill: var(--train); stroke: none; }
+svg .n-train text { fill: var(--train-ink); }
+svg .n-fixed rect { fill: var(--fixed); stroke: none; }
+svg .n-fixed text { fill: var(--ink); }
+svg .n-io rect { fill: var(--surface); stroke: var(--ink); stroke-width: 1.2; }
+svg .n-io text { fill: var(--ink); }
+svg .n-rule rect { fill: var(--surface); stroke: var(--muted); stroke-width: 1.4; stroke-dasharray: 5 4; }
+svg .n-rule text { fill: var(--ink); }
+svg .n-ghost rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 3 3; }
+svg .n-ghost text { fill: var(--muted); }
+svg text { font-family: var(--body); font-size: 13.5px; }
+svg text.t1 { font-weight: 600; }
+svg text.sub { font-size: 11.5px; opacity: 0.85; }
+svg .edge { fill: none; stroke: var(--muted); stroke-width: 1.4; }
+svg .edge.dash { stroke-dasharray: 4 4; }
+svg marker path { fill: var(--muted); }
+svg .note { fill: var(--muted); font-size: 11px; font-style: italic; }
+</style>
+
+<div class="wrap">
+<header>
+  <h1>Seven candidate rumble detectors</h1>
+  <p class="lede">Each one starts from what we know works, our current detector, and changes one idea. Pick three or four and I'll write the code so they can run on the lab PC before Tuesday. My ranking is at the end.</p>
+  <div class="legend" aria-label="Diagram legend">
+    <span><i class="sw frozen"></i>Pretrained, not trained further</span>
+    <span><i class="sw train"></i>Trained on our labels</span>
+    <span><i class="sw fixed"></i>Fixed signal processing</span>
+    <span><i class="sw rule"></i>Alarm rule, tuned on validation</span>
+  </div>
+</header>
+
+<div class="ref">
+  <h3>Where we start: the current detector</h3>
+  <div class="diagram" data-d="current"></div>
+  <p>A 24-hour recording is resampled to 500 Hz and played to AVES 32× faster, so rumbles land in the pitch range AVES knows. AVES gives one fingerprint every 0.64 s of real time. A small classifier (an MLP) looks at 17 fingerprints in a row (10.9 s) and gives a rumble probability, and the alarm rule turns those probabilities into rumble boxes. On the validation days it scores <b>0.159</b>: the average of its false alarms per hour at 80% and at 85% recall. Every candidate is scored the same way, with 5 training runs, and the tests are scored once at the end.</p>
+</div>
+
+<div>
+  <h2 style="margin-bottom:14px">At a glance</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Model</th><th>What it goes after</th><th>Lab PC time</th><th>Likely gain</th><th>Rating</th></tr></thead>
+    <tbody>
+      <tr><td><a href="#m1">1. Long-memory reader</a></td><td>False alarms from sounds whose time course gives them away</td><td>~3 h</td><td class="gain mid">Medium, uncertain</td><td class="pick">5/10</td></tr>
+      <tr><td><a href="#m2">2. Day-normalised fingerprints</a></td><td>New years and recorders (Sample B lags Sample A)</td><td>~2 h</td><td class="gain mid">Small to medium</td><td class="pick">4/10</td></tr>
+      <tr><td><a href="#m3">3. Noise-aware classifier</a></td><td>Vehicles, rain, thunder, wind</td><td>~2 h</td><td class="gain mid">Small to medium</td><td class="pick">6/10</td></tr>
+      <tr><td><a href="#m4">4. Detect, then double-check</a></td><td>All remaining false alarms</td><td>~8 h</td><td class="gain high">Medium to large</td><td class="pick">8/10</td></tr>
+      <tr><td><a href="#m5">5. Two-stream: AVES + low-pitch view</a></td><td>Engines and broadband noise</td><td>~10 h</td><td class="gain mid">Medium</td><td class="pick">7/10</td></tr>
+      <tr><td><a href="#m6">6. Swap the encoder</a></td><td>Whether AVES is the right starting point</td><td>½–1 day per encoder</td><td class="gain mid">Unknown</td><td class="pick">6/10</td></tr>
+      <tr><td><a href="#m7">7. Pitch-contour features</a></td><td>Engines and other steady drones</td><td>~4 h</td><td class="gain low">Small</td><td class="pick">3/10</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="margin-top:12px; font-size:0.92rem; color:var(--muted)">Times are my estimates for training and scoring 5 runs on the RTX 4060, after I've written the code. Models 1, 2, 3 and 7 reuse the AVES fingerprints we already saved, which is why they are fast. Models 2 and 3 are small enough to combine with any of the others later. The rating is my estimate of how likely each one is to clearly beat the current detector, out of 10. Model 2 rates higher as an add-on to another model than on its own.</p>
+</div>
+
+<section class="model" id="m1">
+  <div class="model-head"><span class="tag">Model 1</span><h2>Long-memory reader</h2>
+  <p>Replace the MLP that sees 10.9 s with a small sequence model (a two-layer BiGRU) that reads about two minutes of fingerprints, forwards and backwards, and scores every 0.64 s step.</p></div>
+  <div class="diagram" data-d="m1"></div>
+  <div class="facts">
+    <div><h3>Why it might help</h3><p>Rumbles come in bouts and last 3–8 s. Engines drone for minutes, and rain builds and fades. With two minutes in view the model can see that shape. On 20 Hz fin-whale calls, the closest acoustic match to rumbles, adding this kind of reader cut false alarms per hour by 59–85%.</p></div>
+    <div><h3>Risk</h3><p>Our window tests stopped improving beyond about 11 s, and AVES already looks across its input. The gain may be small. It's the cheapest real test of the idea.</p></div>
+    <div><h3>What changes in training</h3><p>We train on 2-minute stretches of whole days, instead of single moments, so the model sees rumbles, background and noise in their real proportions.</p></div>
+    <div><h3>Cost</h3><p>Uses the saved fingerprints. About 15–30 minutes per training run, so about 3 hours for 5 runs plus scoring.</p></div>
+  </div>
+</section>
+
+<section class="model" id="m2">
+  <div class="model-head"><span class="tag">Model 2</span><h2>Day-normalised fingerprints</h2>
+  <p>Before the classifier, subtract each recording's own typical background, its median fingerprint over the day, so the classifier sees what is unusual for that recorder on that day.</p></div>
+  <div class="diagram" data-d="m2"></div>
+  <div class="facts">
+    <div><h3>Why it might help</h3><p>Sample B (2023) scores lower than Sample A. Recorders, sites and seasons change the background hum, and the classifier can mistake a change in background for a change in content. Removing each day's baseline is the standard cheap fix for that kind of shift.</p></div>
+    <div><h3>Risk</h3><p>On a day with a lot of elephant activity, rumbles slightly shift the median. Using the median rather than the average keeps that effect small.</p></div>
+    <div><h3>What changes in training</h3><p>Nothing besides the normalisation step. Same data, same classifier, same rule.</p></div>
+    <div><h3>Cost</h3><p>Uses the saved fingerprints. About 2 hours. It can be added as an on/off switch to any other model.</p></div>
+  </div>
+</section>
+
+<section class="model" id="m3">
+  <div class="model-head"><span class="tag">Model 3</span><h2>Noise-aware classifier</h2>
+  <p>Instead of answering "rumble or not", the classifier answers which of seven things it hears: rumble, vehicle, rain, thunder, wind, human voice or other. Only the rumble score is used for detection.</p></div>
+  <div class="diagram" data-d="m3"></div>
+  <div class="facts">
+    <div><h3>Why it might help</h3><p>Adding the noise clips was our biggest single win, but they all went into one "not rumble" pile. Having to tell a vehicle from thunder from a rumble forces the classifier to learn sharper boundaries, especially for the sounds that fool it today.</p></div>
+    <div><h3>Risk</h3><p>The noise clips are short and few compared with the background of whole days, so the gain may be modest. Forest background still counts as "other".</p></div>
+    <div><h3>What changes in training</h3><p>Each noise clip only has a label for the whole clip (its folder name), not for when the sound happens inside it. So the noise classes are trained at clip level: the model scores every 0.64 s step, the clip's score comes from its strongest steps (attention pooling), and only that is compared with the folder label. Rumble labels stay per step, as now.</p></div>
+    <div><h3>Cost</h3><p>Uses the saved fingerprints. About 2 hours.</p></div>
+  </div>
+</section>
+
+<section class="model" id="m4">
+  <div class="model-head"><span class="tag">Model 4</span><h2>Detect, then double-check</h2>
+  <p>Keep the current detector, but run it with a low cut-off so it catches nearly every rumble, plus more false alarms. A second, heavier model then looks closely at 30 s around each candidate and decides.</p></div>
+  <div class="diagram" data-d="m4"></div>
+  <div class="facts">
+    <div><h3>Why it might help</h3><p>The second model only sees a few hundred candidates per day, so it can be much bigger than anything we could run over 24 hours. It sees the sound at its real pitch, with 0–250 Hz spread over many pixels. This is how many deployed bioacoustic systems cut false alarms.</p></div>
+    <div><h3>Risk</h3><p>The double-checker needs examples of false alarms to learn from. The current detector makes few of them on its own training days, so I'd gather them by cross-fitting: each half of the training days is checked by a detector trained on the other half.</p></div>
+    <div><h3>What changes in training</h3><p>A pretrained image network (ResNet-18) is fine-tuned on spectrogram cuts of candidates: true rumbles versus false alarms. It doesn't touch the first stage.</p></div>
+    <div><h3>Cost</h3><p>About 8 hours: finding candidates, cutting spectrograms, training the checker for 5 runs, and scoring.</p></div>
+  </div>
+</section>
+
+<section class="model" id="m5">
+  <div class="model-head"><span class="tag">Model 5</span><h2>Two-stream: AVES + low-pitch view</h2>
+  <p>Add a second, small network that looks at the plain spectrogram from 5 to 250 Hz at normal speed, and join its output with the AVES fingerprints every 0.64 s.</p></div>
+  <div class="diagram" data-d="m5"></div>
+  <div class="facts">
+    <div><h3>Why it might help</h3><p>AVES hears the sound sped up 32×, which is good for the shape of a call but squeezes fine pitch detail. The low-pitch view shows an engine's evenly spaced, steady harmonics and the broadband smear of rain very clearly. PCEN, a loudness normalisation used in bioacoustics, keeps faint rumbles visible against changing background.</p></div>
+    <div><h3>Risk</h3><p>If AVES already captures what the spectrogram shows, the second stream adds little. PCEN's time setting needs tuning.</p></div>
+    <div><h3>What changes in training</h3><p>The small CNN and the classifier are trained together. AVES stays frozen.</p></div>
+    <div><h3>Cost</h3><p>About 10 hours: computing spectrograms for every day (cheap but many days) plus training 5 runs.</p></div>
+  </div>
+</section>
+
+<section class="model" id="m6">
+  <div class="model-head"><span class="tag">Model 6</span><h2>Swap the encoder</h2>
+  <p>Keep everything else and replace AVES with another pretrained sound model. Each one hears the recording sped up so rumbles land in the pitch range it was trained on, and each is compared with AVES using the same classifier, rule and scoring.</p></div>
+  <div class="diagram" data-d="m6"></div>
+  <div class="facts">
+    <div><h3>Why it might help</h3><p>We have never tested whether AVES is the best starting point, only which part of AVES to use. This answers that directly, with the same classifier, rule and scoring.</p></div>
+    <div><h3>Risk</h3><p>In the DeepForestSound paper, frozen Perch did badly on elephants, so a newer encoder isn't automatically better. Encoders that give one number per 160 ms or per 5 s (BEATs, Perch 2.0) are too coarse for our 0.64 s grid, so the two picked keep that grid exactly.</p></div>
+    <div><h3>What changes in training</h3><p>New fingerprints for every day, then the same training recipe as our final model.</p></div>
+    <div><h3>Cost</h3><p>About 5 to 8 hours per encoder, mostly computing the new fingerprints. Both encoders below fit before Tuesday.</p></div>
+  </div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Encoder</th><th>Trained on</th><th>Why try it</th><th>Before Tuesday?</th></tr></thead>
+    <tbody>
+      <tr><td>BirdAVES (biox-base)</td><td>Birds plus the AVES animal sounds, self-supervised</td><td>Same design and size as AVES, so it isolates what the training sounds add. Played 32× faster, one fingerprint per 0.64 s</td><td>Yes, built</td></tr>
+      <tr><td>Dasheng (base)</td><td>272,000 hours of general sound, self-supervised</td><td>A different kind of model trained on far more sound. Played 16× faster, one fingerprint per 40 ms = 0.64 s of real time</td><td>Yes, built</td></tr>
+      <tr><td>BEATs</td><td>AudioSet, self-supervised</td><td>Strong, but one number per 160 ms (2.5 s of real time at 16×) and only unofficial weights</td><td>Not now</td></tr>
+      <tr><td>Perch 2.0</td><td>Birds plus other animals, supervised</td><td>Strong on whales, but one number per 5 s window and TensorFlow</td><td>Not now</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="model" id="m7">
+  <div class="model-head"><span class="tag">Model 7</span><h2>Pitch-contour features</h2>
+  <p>Track the fundamental pitch (8–30 Hz) and its harmonics directly from the 500 Hz audio, and give the classifier a few numbers per 0.64 s: how strong the harmonics are, how much the pitch bends, and how steady it has been.</p></div>
+  <div class="diagram" data-d="m7"></div>
+  <div class="facts">
+    <div><h3>Why it might help</h3><p>A rumble's pitch rises and falls over a few seconds. An engine holds a nearly flat pitch for minutes. That's a strong, explainable clue that AVES may only pick up indirectly.</p></div>
+    <div><h3>Risk</h3><p>Pitch tracking at 10–20 Hz is unreliable for faint or distant rumbles, which are the ones we miss most.</p></div>
+    <div><h3>What changes in training</h3><p>The pitch numbers are joined to the saved fingerprints. Same classifier and rule.</p></div>
+    <div><h3>Cost</h3><p>About 4 hours: pitch tracking on every day runs on the CPU, then a short training.</p></div>
+  </div>
+</section>
+
+<div class="ref">
+  <h3>My top five, by how well I expect them to do</h3>
+  <ol class="top">
+    <li><b>Model 4, detect then double-check.</b> It attacks false alarms directly with a model far bigger than we could run over a whole day, and it sees rumbles at their real pitch. It also keeps the current detector's recall.</li>
+    <li><b>Model 5, two-stream.</b> Most of what still fools us is engines, rain and thunder, and those look most different from rumbles in a plain low-pitch spectrogram.</li>
+    <li><b>Model 6 with BirdAVES or Dasheng.</b> A different encoder could lift everything built on top of it. It's the least predictable of the five, which is also why it's worth knowing.</li>
+    <li><b>Model 3, noise-aware, with model 2's day normalisation switched on.</b> Cheap, and it builds on our biggest single win so far. The day normalisation is aimed at the Sample B gap.</li>
+    <li><b>Model 1, long-memory reader.</b> Strong evidence from whales and from every top sound-event detector, but our own window tests flattened beyond 11 s, so I rank it last of the five.</li>
+  </ol>
+  <p>Built and running for Tuesday: models 4, 1, 2, 7, 5 and 6 (BirdAVES, Dasheng), in that order. Each is compared with the current detector on the validation days first; the tests are scored once at the end.</p>
+</div>
+</div>
+
+<script>
+(function () {
+  const W = 150, H = 58, GX = 22, GY = 28, PAD = 14;
+  const D = {
+    current: { nodes: [
+      ["a", 0, 0, "io", "24 h recording"],
+      ["s", 1, 0, "fixed", "500 Hz, played", "32× faster"],
+      ["v", 2, 0, "frozen", "AVES layer 12", "1 per 0.64 s"],
+      ["m", 3, 0, "train", "MLP", "17 steps = 10.9 s"],
+      ["r", 4, 0, "rule", "Alarm rule"],
+      ["o", 5, 0, "io", "Rumble boxes"]],
+      edges: [["a","s"],["s","v"],["v","m"],["m","r"],["r","o"]] },
+    m1: { nodes: [
+      ["a", 0, 0, "io", "24 h recording"],
+      ["s", 1, 0, "fixed", "500 Hz, played", "32× faster"],
+      ["v", 2, 0, "frozen", "AVES layer 12", "saved fingerprints"],
+      ["m", 3, 0, "train", "BiGRU reader", "~2 min = 188 steps"],
+      ["r", 4, 0, "rule", "Alarm rule"],
+      ["o", 5, 0, "io", "Rumble boxes"]],
+      edges: [["a","s"],["s","v"],["v","m"],["m","r"],["r","o"]],
+      notes: [[3, 1, "reads forwards and backwards"]] },
+    m2: { nodes: [
+      ["a", 0, 1, "io", "24 h recording"],
+      ["s", 1, 1, "fixed", "500 Hz, played", "32× faster"],
+      ["v", 2, 1, "frozen", "AVES layer 12", "saved fingerprints"],
+      ["d", 3, 0, "fixed", "This day's median", "fingerprint"],
+      ["n", 3, 1, "fixed", "Subtract the", "day's baseline"],
+      ["m", 4, 1, "train", "MLP", "10.9 s"],
+      ["r", 5, 1, "rule", "Alarm rule"]],
+      edges: [["a","s"],["s","v"],["v","n"],["v","d"],["d","n"],["n","m"],["m","r"]] },
+    m3: { nodes: [
+      ["a", 0, 1, "io", "24 h recording"],
+      ["s", 1, 1, "fixed", "500 Hz, played", "32× faster"],
+      ["v", 2, 1, "frozen", "AVES layer 12", "saved fingerprints"],
+      ["m", 3, 1, "train", "MLP, 7 outputs", "10.9 s"],
+      ["k", 4, 0, "fixed", "Rumble score"],
+      ["x", 4, 2, "ghost", "6 noise classes", "vehicle, rain, thunder, …"],
+      ["r", 5, 0, "rule", "Alarm rule"]],
+      edges: [["a","s"],["s","v"],["v","m"],["m","k"],["m","x",1],["k","r"]],
+      notes: [[5, 2, "used only while training"]] },
+    m4: { nodes: [
+      ["a", 0, 0, "io", "24 h recording"],
+      ["c", 1, 0, "frozen", "Current detector", "AVES + MLP"],
+      ["r", 2, 0, "rule", "Low cut-off", "catch nearly all"],
+      ["k", 3, 0, "fixed", "Candidates", "few hundred / day"],
+      ["t", 3, 1, "fixed", "30 s around", "each candidate"],
+      ["p", 4, 1, "fixed", "Spectrogram", "0–250 Hz, PCEN"],
+      ["n", 5, 1, "train", "ResNet-18 checker", "rumble or not?"],
+      ["o", 5, 0, "io", "Rumble boxes", "with new scores"]],
+      edges: [["a","c"],["c","r"],["r","k"],["k","t"],["t","p"],["p","n"],["n","o"],["a","t",1]] },
+    m5: { nodes: [
+      ["a", 0, 0.5, "io", "24 h recording"],
+      ["s", 1, 0, "fixed", "500 Hz, played", "32× faster"],
+      ["v", 2, 0, "frozen", "AVES layer 12", "1 per 0.64 s"],
+      ["f", 1, 1, "fixed", "Spectrogram", "5–250 Hz, PCEN"],
+      ["c", 2, 1, "train", "Small CNN", "1 per 0.64 s"],
+      ["j", 3, 0.5, "fixed", "Join side", "by side"],
+      ["m", 4, 0.5, "train", "MLP", "10.9 s"],
+      ["r", 5, 0.5, "rule", "Alarm rule"]],
+      edges: [["a","s"],["a","f"],["s","v"],["f","c"],["v","j"],["c","j"],["j","m"],["m","r"]] },
+    m6: { nodes: [
+      ["a", 0, 0, "io", "24 h recording"],
+      ["s", 1, 0, "fixed", "Resample and", "speed up per encoder"],
+      ["v", 2, 0, "frozen", "Another encoder", "BirdAVES, Dasheng"],
+      ["g", 2, 1, "ghost", "AVES", "(the current one)"],
+      ["m", 3, 0, "train", "MLP", "10.9 s"],
+      ["r", 4, 0, "rule", "Alarm rule"],
+      ["o", 5, 0, "io", "Rumble boxes"]],
+      edges: [["a","s"],["s","v"],["v","m"],["m","r"],["r","o"],["g","v",1]],
+      notes: [[3, 1, "same classifier, rule and scoring"]] },
+    m7: { nodes: [
+      ["a", 0, 0.5, "io", "24 h recording"],
+      ["s", 1, 0, "fixed", "500 Hz, played", "32× faster"],
+      ["v", 2, 0, "frozen", "AVES layer 12", "saved fingerprints"],
+      ["p", 1, 1, "fixed", "Pitch tracker", "8–30 Hz + harmonics"],
+      ["q", 2, 1, "fixed", "Bend, steadiness,", "harmonic strength"],
+      ["j", 3, 0.5, "fixed", "Join side", "by side"],
+      ["m", 4, 0.5, "train", "MLP", "10.9 s"],
+      ["r", 5, 0.5, "rule", "Alarm rule"]],
+      edges: [["a","s"],["a","p"],["s","v"],["p","q"],["v","j"],["q","j"],["j","m"],["m","r"]] }
+  };
+  const NS = "http://www.w3.org/2000/svg";
+  const el = (t, a, p) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+  const pos = (c, r) => [PAD + c * (W + GX), PAD + r * (H + GY)];
+  document.querySelectorAll(".diagram[data-d]").forEach((box, i) => {
+    const d = D[box.dataset.d];
+    const rows = Math.max(...d.nodes.map(n => n[2]), ...(d.notes || []).map(n => n[1])) + 1;
+    const cols = Math.max(...d.nodes.map(n => n[1])) + 1;
+    const vw = PAD * 2 + cols * W + (cols - 1) * GX, vh = PAD * 2 + rows * H + (rows - 1) * GY;
+    const svg = el("svg", { viewBox: `0 0 ${vw} ${vh}`, role: "img", "aria-label": box.closest("section, .ref").querySelector("h2, h3").textContent + " diagram" });
+    const defs = el("defs", {}, svg);
+    const mk = el("marker", { id: "ar" + i, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" }, defs);
+    el("path", { d: "M0,0 L10,5 L0,10 z" }, mk);
+    const at = {};
+    d.nodes.forEach(n => { at[n[0]] = n; });
+    d.edges.forEach(([f, t, dash]) => {
+      const A = at[f], B = at[t];
+      const [ax, ay] = pos(A[1], A[2]), [bx, by] = pos(B[1], B[2]);
+      let path;
+      if (A[1] === B[1]) {          // same column: vertical
+        const x = ax + W / 2, y1 = ay < by ? ay + H : ay, y2 = ay < by ? by : by + H;
+        path = `M${x},${y1} L${x},${y2}`;
+      } else if (A[1] > B[1]) {     // going back left: route below
+        const y = Math.max(ay, by) + H + GY / 2;
+        path = `M${ax + W / 2},${ay + H} L${ax + W / 2},${y} L${bx + W / 2},${y} L${bx + W / 2},${by + H}`;
+      } else {
+        const x1 = ax + W, y1 = ay + H / 2, x2 = bx, y2 = by + H / 2;
+        if (Math.abs(y1 - y2) < 1) path = `M${x1},${y1} L${x2},${y2}`;
+        else if (B[2] > A[2] && B[1] - A[1] > 1) path = `M${ax + W / 2},${ay + H} L${ax + W / 2},${y2} L${x2},${y2}`;
+        else { const mx = x2 - GX / 2; path = `M${x1},${y1} L${mx},${y1} L${mx},${y2} L${x2},${y2}`; }
+      }
+      el("path", { d: path, class: "edge" + (dash ? " dash" : ""), "marker-end": `url(#ar${i})` }, svg);
+    });
+    d.nodes.forEach(([id, c, r, kind, t1, t2]) => {
+      const [x, y] = pos(c, r);
+      const g = el("g", { class: "n-" + kind }, svg);
+      el("rect", { x, y, width: W, height: H, rx: 7 }, g);
+      const a = el("text", { x: x + W / 2, y: y + (t2 ? H / 2 - 3 : H / 2 + 4), "text-anchor": "middle", class: "t1" }, g);
+      a.textContent = t1;
+      if (t2) { const b = el("text", { x: x + W / 2, y: y + H / 2 + 14, "text-anchor": "middle", class: "sub" }, g); b.textContent = t2; }
+    });
+    (d.notes || []).forEach(([c, r, t]) => {
+      const [x, y] = pos(c, r);
+      const n = el("text", { x: x + W / 2, y: y + H / 2, "text-anchor": "middle", class: "note" }, svg);
+      n.textContent = t;
+    });
+    box.appendChild(svg);
+  });
+})();
+</script>

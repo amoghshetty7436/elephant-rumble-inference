@@ -24,7 +24,7 @@ It is tested only on small made-up recordings so far (14 tests pass). The real r
 
 ## How to run it (after the split run has finished)
 
-1. Copy `experiments.py` from `retraining\experiments\` in the project files into your `tools\` folder, next to `dataset_configs.py`. It's also on GitHub, on branch `claude/project-thread-xdnlff`.
+1. Copy `experiments.py` from `retraining\experiments\` in the project files into your `tools\` folder, next to `dataset_configs.py`. It's also on GitHub, on branch `main`.
 2. In VS Code's terminal:
    ```
    .venv\Scripts\activate

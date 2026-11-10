@@ -59,13 +59,13 @@ py -3.11 --version
 
 If `winget` isn't recognized, install them by hand: Git from https://git-scm.com/download/win and Python 3.11 from https://www.python.org/downloads/release/python-3119/ ("Windows installer (64-bit)", tick **"Add python.exe to PATH"**).
 
-### 3. Get the code (the branch with detect.py)
+### 3. Get the code
 
 ```
 cd "$HOME\Desktop"
 git clone https://github.com/amoghshetty7436/elephant-rumble-inference.git
 cd elephant-rumble-inference
-git checkout claude/project-thread-qzngu1
+git checkout main
 ```
 
 ### 4. Make the Python environment and install PyTorch for the GPU

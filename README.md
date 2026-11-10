@@ -1,3 +1,24 @@
+# Elephant Rumble Inference: ELP retraining and improvement
+
+This fork continues FruitPunch AI's AVES-based rumble detector (original README below) for
+the Cornell Elephant Listening Project: retrained on ELP's own data, improved, compared with
+published detectors, and packaged so ELP staff can run it.
+
+| Where | What |
+|---|---|
+| [`ElephantRumbleDetector/`](ElephantRumbleDetector/) | **The final detector**, packaged with a window and a one-click installer for Windows, Mac and Linux |
+| [`tools/`](tools/README.md) | Every research script: retraining, data choice, improvement, the full rerun, AVES tuning, candidate models, baselines, and running on new deployments |
+| [`tests/`](tests/) | Tests for the scripts (`python -m pytest tests -q`) |
+| [`models/`](models/README.md) | Which model weights are here and which stay on the lab PC |
+| [`docs/elp/`](docs/elp/README.md) | Walkthroughs, reports, research notes, result pages and progress updates |
+| [`elephant_rumble_inference/`](elephant_rumble_inference/) | FruitPunch's original package (unchanged) |
+| [`notebooks/`](notebooks/), [`docs/assets/`](docs/assets/) | FruitPunch's original notebooks and figures |
+
+Start with [`docs/elp/walkthrough/00-overview.md`](docs/elp/walkthrough/00-overview.md) and
+[`docs/elp/results/rumble-detector-research-explained.html`](docs/elp/results/rumble-detector-research-explained.html).
+
+---
+
 # Elephant Rumble Inference (using AVES/HuBERT based transformer models)
 
 
