@@ -273,6 +273,21 @@ class BestDetector:
         return prob, ev, t
 
 
+def folder_table(folder, files, min_score):
+    """One Raven table for a folder: its recordings one after another, as detect.py writes it."""
+    import numpy as np
+    rows, elapsed = [], 0.0
+    for src, base in files:
+        if not os.path.exists(dc.long_path(base + EVENTS_SUFFIX)):
+            continue
+        ev = np.load(dc.long_path(base + EVENTS_SUFFIX))
+        for bt, et, s, off, sc in event_rows(ev, min_score, src):
+            rows.append((elapsed + bt, elapsed + et, s, off, sc))
+        elapsed += len(np.load(dc.long_path(base + PROBS_SUFFIX), mmap_mode="r")) * FRAME_SECONDS
+    detect.write_table(os.path.join(folder, detect.FOLDER_TABLE), rows)
+    return len(rows)
+
+
 def event_rows(ev, min_score, src):
     return [(a * FRAME_SECONDS, b * FRAME_SECONDS, src, a * FRAME_SECONDS, sc)
             for a, b, _, sc in ev if sc >= min_score]
@@ -318,9 +333,11 @@ def cmd_run(a):
     detect.no_quick_edit()
     os.makedirs(a.out, exist_ok=True)
     stdout, sys.stdout = sys.stdout, dc.Tee(os.path.join(a.out, "run_log.txt"))
+    a.watchdog = detect.Watchdog(a.stall_minutes * 60, dump=os.path.join(a.out, "stall_traceback.txt"))
     try:
         run(a)
     finally:
+        a.watchdog.stop.set()
         sys.stdout.f.close()
         sys.stdout = stdout
 
@@ -331,6 +348,13 @@ def run(a):
         log(f"{a.model} has no model yet: exporting {a.name} from round 2 first")
         cmd_export(a)
     det = BestDetector(a.model, fake=a.fake_embedder)
+    old = os.path.join(a.out, "detector.json")
+    if os.path.exists(old):  # never mix two models' results in one folder
+        prev = json.load(open(old)).get("experiment")
+        if prev != det.info["name"]:
+            sys.exit(f"{a.out} holds results of another model ({prev}); pick a new --out folder")
+    wd = getattr(a, "watchdog", None) or detect.Watchdog(0)
+    wd.beat("listing the recordings")
     files = detect.find_audio(a.inputs)
     log(f"{len(files)} recordings under {', '.join(a.inputs)}")
     if a.hh:
@@ -343,6 +367,9 @@ def run(a):
         log(f"sample: {len(files)} recordings from {len({detect.site_of(p) for _, p in files})} sites")
     jobs = [(p, detect.out_base(a.out, r, p)) for r, p in files]
     todo = [(p, b) for p, b in jobs if a.redo or not os.path.exists(dc.long_path(b + TABLE_SUFFIX))]
+    left_in_folder = {}
+    for _, b in todo:
+        left_in_folder[os.path.dirname(b)] = left_in_folder.get(os.path.dirname(b), 0) + 1
     log(f"{len(jobs) - len(todo)} already done, {len(todo)} to do; results in {a.out}")
     min_score = det.cut_off if a.min_score is None else a.min_score
     info = {"experiment": det.info["name"], "kind": "checked" if det.checkers else "stage", "rule": det.rule,
@@ -371,11 +398,14 @@ def run(a):
         queue(i + a.prefetch)
         try:
             t0 = time.time()
+            wd.beat(f"waiting for {src} to be read from the drive")
             y500, y1k, t_load = ahead.pop(i).result()
             waited = time.time() - t0
             hours = y500.shape[0] / 500 / 3600
+            wd.beat(f"running the model on {src}")
             prob, ev, t = det.score(y500, y1k)
             t1 = time.time()
+            wd.beat(f"writing the results of {src}")
             os.makedirs(os.path.dirname(dc.long_path(base)), exist_ok=True)
             for suffix, arr in ((PROBS_SUFFIX, prob.astype(np.float16)), (EVENTS_SUFFIX, ev.astype(np.float32))):
                 np.save(dc.long_path(base + suffix + ".tmp.npy"), arr)
@@ -400,6 +430,12 @@ def run(a):
             f"read {t_load:.0f} s (waited {waited:.0f} s), AVES {t.get('aves_s', 0):.0f} s, Dasheng {t.get('dasheng_s', 0):.0f} s, "
             f"checker {t.get('cuts_s', 0) + t.get('checker_s', 0):.0f} s; {fmt_dur(el / max(done_h, 1e-9) * 24)} per 24 h so far, "
             f"about {fmt_dur(el / (i + 1) * (len(todo) - i - 1))} left")
+        d = os.path.dirname(base)
+        left_in_folder[d] -= 1
+        if left_in_folder[d] == 0:
+            wd.beat(f"writing the folder table of {d}")
+            n = folder_table(d, [(p, b) for p, b in jobs if os.path.dirname(b) == d], min_score)
+            log(f"folder table {os.path.join(d, detect.FOLDER_TABLE)}: {n} rumbles")
     pool.shutdown()
     tf.close()
     log(f"finished: {done_h:.0f} h of audio in {fmt_dur(time.time() - t_start)}" + (f"; {failed} failed, see failed.txt" if failed else ""))
@@ -460,6 +496,8 @@ def main(argv=None):
     p.add_argument("--min-score", type=float, default=None, help="tables keep alarms scoring at least this (default: the cut-off)")
     p.add_argument("--prefetch", type=int, default=2, help="recordings read + resampled ahead in the background")
     p.add_argument("--redo", action="store_true")
+    p.add_argument("--stall-minutes", type=float, default=20,
+                   help=f"stop with exit code {detect.STALLED} after this long without progress, so a loop restarts it (0: never)")
     p.add_argument("--seeds", type=int, default=None, help=argparse.SUPPRESS)
     p.add_argument("--fake-embedder", action="store_true", help=argparse.SUPPRESS)
     a = p.parse_args(argv)

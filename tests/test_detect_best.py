@@ -105,6 +105,17 @@ def test_detect_best_end_to_end(source, tmp_path, monkeypatch):  # noqa: F811
         rows = list(csv.DictReader(open(t), delimiter="\t"))
         assert len(rows) == int((ev[:, 3] >= info["cut_off"]).sum())
     assert json.load(open(out / "detector.json"))["kind"] == "checked"
+    folders = sorted(out.rglob(db.detect.FOLDER_TABLE))
+    assert folders and sum(len(open(f).readlines()) - 1 for f in folders) == sum(
+        len(open(t).readlines()) - 1 for t in tables)
+    # another model's results folder is refused, so nothing is overwritten
+    d = json.load(open(out / "detector.json"))
+    d["experiment"] = "something else"
+    json.dump(d, open(out / "detector.json", "w"))
+    with pytest.raises(SystemExit):
+        db.main(args)
+    d["experiment"] = info["name"]
+    json.dump(d, open(out / "detector.json", "w"))
 
     # compare_hori_harm reads the checked scores and the cut-off from detector.json
     import compare_hori_harm as ch
