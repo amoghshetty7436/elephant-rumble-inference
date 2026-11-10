@@ -159,6 +159,8 @@ def main(argv=None):
     p.add_argument("--out", required=True, help="folder for the report (made if needed)")
     p.add_argument("--slack", type=float, default=2.0, help="seconds allowed between two boxes that match")
     p.add_argument("--cutoffs", default=",".join(str(c) for c in DEFAULT_CUTOFFS))
+    p.add_argument("--hh-cutoffs", default=",".join(str(c) for c in HH_CUTOFFS),
+                   help="Hori-Harm score cut-offs to show (its table starts at 0.4)")
     p.add_argument("--main-cutoff", type=float, default=None, help="default: the model's own cut-off")
     p.add_argument("--tables-only", action="store_true", help="ignore the .probs.npy files (one cut-off only)")
     p.add_argument("--sample", type=int, default=200, help="how many of our unmatched detections to sample for review")
@@ -267,7 +269,7 @@ def main(argv=None):
 
     # Hori-Harm at each score cut-off (its recall is out of its own confirmed rumbles at 0.4)
     hh_rows = []
-    for c in HH_CUTOFFS:
+    for c in sorted({float(x) for x in a.hh_cutoffs.split(",")}):
         sel = [h for h in hh_c if h["score"] >= c]
         t = sum(h["count"] > 0 for h in sel)
         hh_rows.append([c, len(sel), round(len(sel) / days, 2), t, pct(t, n_true), pct(t, len(sel))])
