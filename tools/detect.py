@@ -1,320 +1,650 @@
-"""Run the rerun's final detector on recordings and time every step.
+#!/usr/bin/env python
+"""
+Run the final rumble detector (the full rerun's final model and alarm rule, see
+walkthrough/18) on new deployments: folders of recordings at any sample rate and of any
+length. Raven tables go wherever --out points, which can be the network drive.
 
-This is the detector ELP would run: AVES fingerprints, the final model (the study's best
-run, with its listening window), the final alarm rule and the validation cut-off, written
-as one Raven table per recording. It reads the model, rule and cut-off from
-Configurations\\_study\\final_detections\\final_model.json, so it needs the study to have
-finished. Nothing in the existing code changes.
+Any sample rate works without changes: every file is resampled to 500 Hz with
+scipy's resample_poly (a proper anti-alias filter), exactly as the training and test
+days were (fp_replica.load_audio). 32 kHz is divided by 64, 8 kHz by 16, 4 kHz by 8.
 
-Steps for each recording, each one timed:
-  read      read the sound file and resample it to 500 Hz (fp_replica.load_audio)
-  aves      AVES fingerprints, an hour at a time, as in training (fp_replica.Embedder)
-  classify  the final model's rumble probability for every 0.64 s frame
-  alarms    the final alarm rule and the cut-off
-  write     the Raven table
+Three commands:
 
-Ways to run it faster, to compare:
-  --readers N         read and resample the next N recordings while AVES works (default 3;
-                      0 = read each one only when it is needed)
-  --half / --full     AVES in half precision (float16 on the GPU, bfloat16 on the CPU) or full;
-                      half is the default on the GPU. With half, the first recording is also
-                      run at full precision and both are compared
-  --workers N         N recordings side by side in separate processes (CPU)
-  --threads T         CPU threads per process (default: all cores / workers)
+  survey  list every recording (count, hours, sample rates, formats, lengths, sizes) per
+          site folder, time one file per sample rate (reading over the network, resampling,
+          AVES, writing the table to --out and to a local folder), and estimate the total
+          time. Writes survey.md and survey_files.csv to --out.
+  run     detect rumbles in every recording. For each file: <name>.rumbles.txt (Raven table)
+          and <name>.probs.npy (the rumble probability of every 0.64 s frame, ~0.3 MB a day,
+          so the cut-off can be changed later without rerunning AVES). After each folder: one
+          combined Raven table for the folder. Rerunning skips the files already done.
+  table   rewrite the Raven tables from the saved .probs.npy files with another cut-off
+          (seconds, no GPU).
 
-On the lab PC:
+  python tools\\detect.py survey L:\\path\\to\\deployment --out L:\\path\\to\\results
+  python tools\\detect.py run    L:\\path\\to\\deployment --out L:\\path\\to\\results
+  python tools\\detect.py table  --out L:\\path\\to\\results --min-score 0.95
 
-  python tools\\detect.py L:\\path\\to\\day.wav
-  python tools\\detect.py L:\\path\\to\\folder --device cpu --workers 6 --threads 4
-
-Results: <out> (default <source>\\Configurations\\_detect\\<date-time>\\): one
-<recording>.rumbles.txt per recording, timing.md and timing.json.
+The output folder mirrors the input folder's subfolders. Nothing is written outside --out.
 """
 import argparse
+import concurrent.futures as cf
 import csv
 import json
 import os
 import re
+import shutil
 import statistics
 import sys
+import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import dataset_configs as dc  # noqa: E402
-from dataset_configs import log, fmt_dur  # noqa: E402
+from dataset_configs import log, fmt_dur, FRAME_SECONDS  # noqa: E402
 
-FRAME_SECONDS = 0.64
-SOUND_EXT = (".wav", ".flac", ".aif", ".aiff")
-STEPS = ("read", "aves", "classify", "alarms", "write")
+AUDIO_EXT = (".wav", ".flac", ".aif", ".aiff")
+DEFAULT_MODEL = os.path.join(dc.DEFAULT_SOURCE, "Configurations", "_study", "final_detections", "final_model.json")
+RAVEN_HEADER = ["Selection", "View", "Channel", "Begin Time (s)", "End Time (s)", "Low Freq (Hz)",
+                "High Freq (Hz)", "Begin Path", "File Offset (s)", "Begin File", "Score"]
+TABLE_SUFFIX = ".rumbles.txt"
+PROBS_SUFFIX = ".probs.npy"
+FOLDER_TABLE = "_all_rumbles.txt"
+STALLED = 3  # exit code of a run stopped by the watchdog
+# measured on the lab PC (improve.md): AVES on the GPU takes about 31 s per 24 h of audio
+AVES_S_PER_24H = 31.0
 
 
-def find_recordings(inputs):
+################################################################################
+# finding the recordings
+################################################################################
+
+def find_audio(roots):
+    """[(root, path)] of every recording under the roots, sorted by folder then name."""
     out = []
-    for p in inputs:
-        if os.path.isdir(p):
-            for d, _, fs in os.walk(p):
-                out += [os.path.join(d, f) for f in sorted(fs) if f.lower().endswith(SOUND_EXT)]
-        elif os.path.isfile(p):
-            out.append(p)
-        else:
-            sys.exit(f"not found: {p}")
+    for root in roots:
+        if os.path.isfile(root):
+            out.append((os.path.dirname(root), root))
+            continue
+        if not os.path.isdir(root):
+            sys.exit(f"Can't find {root}. Is the drive connected?")
+        def unlisted(err):  # os.walk skips a folder it can't list without saying so
+            log(f"WARNING could not list {err.filename}: {err}. Its recordings are left out; run again later.")
+
+        for dirpath, dirs, names in os.walk(root, onerror=unlisted):
+            dirs.sort()
+            out += [(root, os.path.join(dirpath, n)) for n in sorted(names)
+                    if n.lower().endswith(AUDIO_EXT) and not n.startswith("._")]
     return out
 
 
-def ctx_of(name):
-    m = re.search(r"_ctx(\d+)_", name)
-    return int(m.group(1)) if m else 0
+def out_base(out, root, path):
+    """<out>\\<input root's name>\\<subfolders>\\<file name>, without the extension."""
+    sub = os.path.relpath(path, root)
+    return os.path.join(out, os.path.basename(os.path.normpath(root)), os.path.splitext(sub)[0])
 
 
-def load_final(path):
-    """(experiment name, model path, rule, cut-off) from the study's final_model.json."""
-    with open(path) as f:
-        fm = json.load(f)
-    for k in ("experiment", "model", "rule", "cut_off"):
-        if k not in fm:
-            sys.exit(f"{path} has no '{k}'; is it the study's final_model.json?")
-    return fm["experiment"], fm["model"], fm["rule"], fm["cut_off"]
+def audio_info(path):
+    import soundfile as sf
+    try:
+        i = sf.info(path)
+        return dict(sr=i.samplerate, channels=i.channels, hours=i.frames / i.samplerate / 3600,
+                    format=f"{i.format} {i.subtype}", bytes=os.path.getsize(path), error="")
+    except Exception as e:  # noqa: BLE001 - a broken file is reported, not fatal
+        return dict(sr=0, channels=0, hours=0.0, format="?", bytes=os.path.getsize(path), error=str(e)[:200])
 
+
+def site_of(path):
+    """The site code at the start of an ELP file name (nn06a_..., dzan_...), or the folder."""
+    m = re.match(r"([a-z]+\d+[a-z]?)_", os.path.basename(path).lower())
+    return m.group(1) if m else os.path.basename(os.path.dirname(path))
+
+
+################################################################################
+# the model
+################################################################################
 
 class Detector:
-    """AVES + the final model + the alarm rule, loaded once per process."""
-
-    def __init__(self, final, device, threads, fake_embedder=False, half=False):
+    def __init__(self, model_json, device=None, fake=False):
         import torch
         import experiments as ex
-        if threads:
-            torch.set_num_threads(threads)
-        self.name, model_path, self.rule, self.cut = load_final(final)
-        self.ctx, self.device, self.half = ctx_of(self.name), device, half
-        self.checked_half = False
-        self.embed = dc.FakeEmbedder() if fake_embedder else self._aves(device)
+        info = json.load(open(model_json))
+        model_path = info["model"]
+        if not os.path.exists(model_path):  # the folder was copied somewhere else
+            model_path = os.path.join(os.path.dirname(os.path.dirname(model_json)), info["experiment"],
+                                      os.path.basename(info["model"]))
+        spec_path = os.path.join(os.path.dirname(model_path), "spec.json")
+        if os.path.exists(spec_path):
+            self.ctx = json.load(open(spec_path))["ctx"]
+        else:
+            self.ctx = int(re.search(r"ctx(\d+)", info["experiment"]).group(1))
+        self.rule, self.cut_off, self.name = info["rule"], info["cut_off"], info["experiment"]
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         m = ex.make_model(self.ctx)
         m.load_state_dict(torch.load(model_path, map_location="cpu"))
-        self.model = m.eval().to(device)
+        self.model = m.eval().to(self.device)
+        self.embed = dc.get_embedder(fake)
+        self.model_path = model_path
+        log(f"model {self.name} (run {info.get('run')}), window {(2 * self.ctx + 1) * FRAME_SECONDS:.2f} s, "
+            f"rule {self.rule}, cut-off {self.cut_off:.4f}, on {self.device}")
 
-    def fingerprints(self, y, half):
-        import torch
-        if half:
-            dt = torch.float16 if self.device == "cuda" else torch.bfloat16
-            with torch.autocast(self.device, dtype=dt):
-                emb = self.embed.whole_file(y)
-        else:
-            emb = self.embed.whole_file(y)
-        if self.device == "cuda":
-            torch.cuda.synchronize()
-        # the study's fingerprints were stored as float16; round the same way
-        return emb.float().half().float()
+    def embeddings(self, y):
+        return self.embed.whole_file(y)
 
-    def alarms(self, prob):
-        import improve as im
-        starts, ends, scores = im.alarms(prob, self.rule) if len(prob) else ([], [], [])
-        return [(a, b, s) for a, b, s in zip(starts, ends, scores) if s >= self.cut]
-
-    def compare_full(self, y, emb_half, kept_half):
-        """Fingerprints and alarms of half vs full precision on one recording."""
+    def probs(self, emb):
+        import numpy as np
         import experiments as ex
-        full = self.fingerprints(y, False)
-        n = min(full.shape[0], emb_half.shape[0])
-        cos = (full[:n] * emb_half[:n]).sum(1) / (full[:n].norm(dim=1) * emb_half[:n].norm(dim=1)).clamp_min(1e-12)
-        kept_full = self.alarms(ex.day_probs(self.model, full, self.ctx, self.device)) if n else []
-        same = len({(a, b) for a, b, _ in kept_full} & {(a, b) for a, b, _ in kept_half})
-        c = {"cosine_mean": round(float(cos.mean()), 5) if n else None,
-             "cosine_min": round(float(cos.min()), 5) if n else None,
-             "alarms_full": len(kept_full), "alarms_half": len(kept_half), "alarms_identical": same}
-        log(f"half precision vs full on the first recording: fingerprint similarity mean "
-            f"{c['cosine_mean']}, worst {c['cosine_min']}; alarms {c['alarms_half']} vs {c['alarms_full']}, "
-            f"{same} identical")
-        return c
-
-    @staticmethod
-    def _aves(device):
-        import fp_replica
-        return fp_replica.Embedder(device)
-
-    def read(self, path):
-        import fp_replica
-        t0 = time.time()
-        y = fp_replica.load_audio(path)
-        return y, time.time() - t0
-
-    def run(self, path, y, out_dir, w):
-        """Everything after reading; returns ({step: seconds}, alarms kept)."""
-        import experiments as ex
-        t, t0 = {}, time.time()
-        emb = self.fingerprints(y, self.half)
-        t["aves"] = time.time() - t0
-        t0 = time.time()
-        prob = ex.day_probs(self.model, emb, self.ctx, self.device) if emb.shape[0] else []
-        t["classify"] = time.time() - t0
-        t0 = time.time()
-        kept = self.alarms(prob)
-        t["alarms"] = time.time() - t0
-        if self.half and not self.checked_half:
-            self.checked_half = True
-            self.half_check = self.compare_full(y, emb, kept)
-        t0 = time.time()
-        write_raven(w, os.path.join(out_dir, os.path.splitext(os.path.basename(path))[0] + ".rumbles.txt"),
-                    path, kept)
-        t["write"] = time.time() - t0
-        return t, len(kept)
+        if emb.shape[0] == 0:  # a recording shorter than about a second: nothing to score
+            return np.zeros(0, dtype=np.float32)
+        return ex.day_probs(self.model, emb, self.ctx, self.device)
 
 
-def write_raven(w, dst, path, kept):
-    with w.open(dst) as f:
+def load(path):
+    """500 Hz mono audio of one recording, and how long reading + resampling took."""
+    t0 = time.time()
+    y = dc.load_audio(path)
+    return y, time.time() - t0
+
+
+def detections(prob, rule, min_score):
+    import improve as im
+    return [(a, b, s) for a, b, s in zip(*im.alarms(prob, rule)) if s >= min_score]
+
+
+def write_table(path, rows):
+    """rows: (begin s in table, end s, full audio path, offset s in that file, score)."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(dc.long_path(tmp), "w", newline="", encoding="utf-8") as f:
         wr = csv.writer(f, delimiter="\t")
-        wr.writerow(["Selection", "View", "Channel", "Begin Time (s)", "End Time (s)", "Low Freq (Hz)",
-                     "High Freq (Hz)", "Begin Path", "File Offset (s)", "Begin File", "Score"])
-        for i, (a, b, s) in enumerate(kept, 1):
-            bt, et = a * FRAME_SECONDS, b * FRAME_SECONDS  # as the study's final_detections
-            wr.writerow([i, "Spectrogram 1", 1, f"{bt:.3f}", f"{et:.3f}", 5, 250, path, f"{bt:.3f}",
-                         os.path.basename(path), f"{s:.4f}"])
+        wr.writerow(RAVEN_HEADER)
+        for i, (bt, et, src, off, sc) in enumerate(rows, 1):
+            wr.writerow([i, "Spectrogram 1", 1, f"{bt:.3f}", f"{et:.3f}", 5, 250, src, f"{off:.3f}",
+                         os.path.basename(src), f"{sc:.4f}"])
+    os.replace(dc.long_path(tmp), dc.long_path(path))
 
 
-def hours_of(path):
-    import soundfile as sf
-    return sf.info(path).duration / 3600
+def file_rows(prob, rule, min_score, src):
+    # times as in study.py's final_detections tables, which the test scores were computed on
+    return [(a * FRAME_SECONDS, b * FRAME_SECONDS, src, a * FRAME_SECONDS, s)
+            for a, b, s in detections(prob, rule, min_score)]
 
 
-def process_files(det, files, out_dir, w, readers, label=""):
-    """Run det over files in order; with readers > 0, the next `readers` files are read and
-    resampled in background threads while AVES works."""
+def folder_table(folder, files, rule, min_score):
+    """One Raven table for a folder: its files one after another, as ELP's day tables are."""
+    import numpy as np
+    rows, elapsed = [], 0.0
+    for src, base in files:
+        p = base + PROBS_SUFFIX
+        if not os.path.exists(dc.long_path(p)):
+            continue
+        prob = np.load(dc.long_path(p)).astype(np.float32)
+        for bt, et, s, off, sc in file_rows(prob, rule, min_score, src):
+            rows.append((elapsed + bt, elapsed + et, s, off, sc))
+        elapsed += len(prob) * FRAME_SECONDS
+    write_table(os.path.join(folder, FOLDER_TABLE), rows)
+    return len(rows)
+
+
+def by_out_folder(jobs):
+    groups = {}
+    for src, base in jobs:
+        groups.setdefault(os.path.dirname(base), []).append((src, base))
+    return groups
+
+
+################################################################################
+# run
+################################################################################
+
+class Watchdog:
+    """Ends the process (exit code STALLED) when nothing has moved on for `limit` seconds, e.g. a
+    read from the network drive that never returns, so a PowerShell loop can start it again."""
+
+    def __init__(self, limit, exit=os._exit, dump=None):
+        import threading
+        self.limit, self.exit, self.dump = limit, exit, dump
+        self.last, self.what = time.time(), "starting"
+        self.stop = threading.Event()
+        self.thread = threading.Thread(target=self.watch, daemon=True)
+        if limit > 0:
+            self.thread.start()
+
+    def beat(self, what):
+        self.last, self.what = time.time(), what
+
+    def watch(self):
+        while not self.stop.wait(min(30.0, self.limit / 4)):
+            if time.time() - self.last > self.limit:
+                log(f"STALLED: no progress for {fmt_dur(time.time() - self.last)} while {self.what}. "
+                    f"Stopping (exit code {STALLED}) so it can be started again; finished files are kept.")
+                sys.stdout.flush()
+                if self.dump:  # where every thread is stuck, for finding the cause
+                    import faulthandler
+                    with open(self.dump, "a") as f:
+                        f.write(f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} stalled while {self.what}\n")
+                        f.flush()
+                        faulthandler.dump_traceback(file=f, all_threads=True)
+                    log(f"where each thread was stuck: {self.dump}")
+                self.exit(STALLED)
+                return
+
+
+def no_quick_edit():
+    """A click in a Windows console window starts a text selection that pauses the program until
+    Esc is pressed. Turn that off for this window while the run lasts."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        h = k.GetStdHandle(-10)  # STD_INPUT_HANDLE
+        mode = ctypes.c_uint32()
+        if k.GetConsoleMode(h, ctypes.byref(mode)):
+            k.SetConsoleMode(h, (mode.value & ~0x0040) | 0x0080)  # QUICK_EDIT off, EXTENDED_FLAGS on
+    except Exception:  # noqa: BLE001 - not a console, or no permission: nothing to do
+        pass
+
+
+def cmd_run(a):
+    import improve as im
+    im.keep_awake()
+    no_quick_edit()
+    os.makedirs(a.out, exist_ok=True)
+    stdout, sys.stdout = sys.stdout, dc.Tee(os.path.join(a.out, "run_log.txt"))
+    a.watchdog = Watchdog(a.stall_minutes * 60, dump=os.path.join(a.out, "stall_traceback.txt"))
+    try:
+        run(a)
+    finally:
+        a.watchdog.stop.set()
+        sys.stdout.f.close()
+        sys.stdout = stdout
+
+
+def run(a):
+    import numpy as np
+    files = find_audio(a.inputs)
+    jobs = [(p, out_base(a.out, r, p)) for r, p in files]
+    todo = [(p, b) for p, b in jobs if a.redo or not os.path.exists(dc.long_path(b + TABLE_SUFFIX))]
+    log(f"{len(files)} recordings, {len(files) - len(todo)} already done, {len(todo)} to do; results in {a.out}")
+    det = Detector(a.model, fake=a.fake_embedder)
+    min_score = det.cut_off if a.min_score is None else a.min_score
+    info = {"experiment": det.name, "model": det.model_path, "rule": det.rule, "cut_off": det.cut_off,
+            "min_score_in_tables": min_score, "inputs": a.inputs, "machine": machine()}
+    with open(os.path.join(a.out, "detector.json"), "w") as f:
+        json.dump(info, f, indent=1)
+    timing_path = os.path.join(a.out, "timings.csv")
+    new = not os.path.exists(timing_path)
+    tf = open(timing_path, "a", newline="")
+    tw = csv.writer(tf)
+    if new:
+        tw.writerow(TIMING_COLUMNS)
+    done_hours, t_start, failed = 0.0, time.time(), []
+    wd = getattr(a, "watchdog", None) or Watchdog(0)
+    wd.beat("reading the headers of the recordings to do")
+    total_hours = sum(audio_info(p)["hours"] for p, _ in todo) if a.estimate else 0.0
+    left_in_folder = {d: sum(1 for _, b in todo if os.path.dirname(b) == d) for d in {os.path.dirname(b) for _, b in todo}}
+    # read + resample the next files in the background while AVES works on this one
+    pool = cf.ThreadPoolExecutor(max(1, a.prefetch))
+    ahead = {}
+
+    def queue(i):
+        if i < len(todo) and i not in ahead:
+            ahead[i] = pool.submit(load, todo[i][0])
+
+    for i in range(min(len(todo), a.prefetch)):
+        queue(i)
+    for i, (src, base) in enumerate(todo):
+        queue(i + a.prefetch)
+        try:
+            t0 = time.time()
+            wd.beat(f"waiting for {src} to be read from the drive")
+            sr = audio_info(src)["sr"]
+            y, t_load = ahead.pop(i).result()
+            waited = time.time() - t0
+            hours = y.shape[0] / 500 / 3600
+            t1 = time.time()
+            wd.beat(f"running AVES on {src}")
+            emb = det.embeddings(y)
+            t2 = time.time()
+            prob = det.probs(emb)
+            t3 = time.time()
+            wd.beat(f"writing the results of {src}")
+            os.makedirs(os.path.dirname(dc.long_path(base)), exist_ok=True)
+            np.save(dc.long_path(base + PROBS_SUFFIX + ".tmp.npy"), prob.astype(np.float16))
+            os.replace(dc.long_path(base + PROBS_SUFFIX + ".tmp.npy"), dc.long_path(base + PROBS_SUFFIX))
+            rows = file_rows(prob, det.rule, min_score, src)
+            write_table(base + TABLE_SUFFIX, rows)
+            t4 = time.time()
+        except Exception as e:  # noqa: BLE001 - one bad file must not stop a 3-day run
+            log(f"FAILED {src}: {e}")
+            failed.append(f"{src}\t{e}")
+            with open(os.path.join(a.out, "failed.txt"), "a") as f:
+                f.write(f"{time.strftime('%Y-%m-%d %H:%M')}\t{src}\t{e}\n")
+            continue
+        del y, emb
+        tw.writerow([time.strftime("%Y-%m-%d %H:%M:%S"), site_of(src), src, sr, f"{hours:.4f}", len(prob),
+                     f"{t_load:.1f}", f"{waited:.1f}", f"{t2 - t1:.1f}", f"{t3 - t2:.2f}", f"{t4 - t3:.2f}",
+                     f"{t4 - t0:.1f}", len(rows), f"{float(prob.max()) if len(prob) else 0:.4f}"])
+        tf.flush()
+        done_hours += hours
+        el = time.time() - t_start
+        rate = el / max(done_hours, 1e-9) * 24
+        left = f", about {fmt_dur((total_hours - done_hours) * el / done_hours)} left" if total_hours else ""
+        log(f"[{i + 1}/{len(todo)}] {os.path.basename(src)}: {hours:.1f} h, {len(rows)} rumbles; "
+            f"read+resample {t_load:.0f} s (waited {waited:.0f} s), AVES {t2 - t1:.0f} s, writing {t4 - t3:.1f} s; "
+            f"{fmt_dur(rate)} per 24 h so far{left}")
+        d = os.path.dirname(base)
+        left_in_folder[d] -= 1
+        if left_in_folder[d] == 0:
+            wd.beat(f"writing the folder table of {d}")
+            n = folder_table(d, by_out_folder(jobs)[d], det.rule, min_score)
+            log(f"folder table {os.path.join(d, FOLDER_TABLE)}: {n} rumbles")
+            write_summary(a.out, jobs, info, min_score)
+    pool.shutdown()
+    tf.close()
+    log(f"finished: {done_hours:.0f} h of audio in {fmt_dur(time.time() - t_start)}"
+        + (f"; {len(failed)} failed, see failed.txt" if failed else ""))
+    missing = write_summary(a.out, jobs, info, min_score)
+    log(f"wrote {os.path.join(a.out, 'summary.md')}" +
+        (f"; WARNING {missing} recordings have no table yet, run the same command again" if missing else
+         f"; every one of the {len(jobs)} recordings has its table"))
+
+
+TIMING_COLUMNS = ["finished", "site", "file", "sample_rate", "hours", "frames", "read_resample_s", "waited_s",
+                  "aves_s", "classify_s", "write_s", "total_s", "detections", "max_prob"]
+
+
+def machine():
+    import platform
+    import torch
+    return {"computer": platform.node(), "python": platform.python_version(), "torch": torch.__version__,
+            "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "none (CPU)"}
+
+
+def write_summary(out, jobs, info, min_score):
+    """summary.md / summary.csv: per site, recordings, hours, rumbles and time taken, from timings.csv
+    (the latest line of each recording), and a check that every recording has its table and
+    probabilities. Returns how many recordings have no table."""
+    import numpy as np
+    last = {}
+    path = os.path.join(out, "timings.csv")
+    if os.path.exists(path):
+        for r in csv.DictReader(open(path)):
+            last[r["file"]] = r
+    sites, problems = {}, []
+    for src, base in jobs:
+        s = sites.setdefault(site_of(src), dict(files=0, done=0, hours=0.0, detections=0, seconds=0.0, aves=0.0))
+        s["files"] += 1
+        table, probs = dc.long_path(base + TABLE_SUFFIX), dc.long_path(base + PROBS_SUFFIX)
+        if not os.path.exists(table) or not os.path.exists(probs):
+            continue
+        s["done"] += 1
+        r = last.get(src)
+        s["detections"] += sum(1 for _ in open(table, encoding="utf-8")) - 1
+        if r:
+            s["hours"] += float(r["hours"])
+            s["seconds"] += float(r["total_s"])
+            s["aves"] += float(r["aves_s"])
+            n_probs = len(np.load(probs, mmap_mode="r"))
+            if n_probs != int(r["frames"]):
+                problems.append(f"{src}: {n_probs} frames saved, {r['frames']} computed")
     rows = []
-    pool = ThreadPoolExecutor(readers) if readers > 0 and len(files) > 1 else None
-    ahead = [pool.submit(det.read, f) for f in files[:readers + 1]] if pool else []
-    for i, path in enumerate(files):
-        t0 = time.time()
-        if pool:
-            y, read_s = ahead.pop(0).result()
-            j = i + readers + 1
-            if j < len(files):
-                ahead.append(pool.submit(det.read, files[j]))
-        else:
-            y, read_s = det.read(path)
-        wait_s = time.time() - t0
-        t, n = det.run(path, y, out_dir, w)
-        hours = y.shape[0] / 500 / 3600
-        row = {"file": path, "hours": round(hours, 3), "alarms": n, "read": read_s, "read_wait": wait_s, **t,
-               "wall": time.time() - t0}
-        rows.append(row)
-        log(f"{label}{os.path.basename(path)} ({hours:.1f} h): {n} alarms; "
-            + ", ".join(f"{k} {row[k]:.1f} s" for k in STEPS) + f"; waited {wait_s:.1f} s for reading")
-    if pool:
-        pool.shutdown()
-    return rows
+    for name, s in sorted(sites.items()):
+        rows.append(dict(site=name, recordings=s["files"], done=s["done"], hours=round(s["hours"], 2),
+                         days=round(s["hours"] / 24, 2), rumbles=s["detections"],
+                         rumbles_per_day=round(s["detections"] / (s["hours"] / 24), 1) if s["hours"] else "",
+                         time=fmt_dur(s["seconds"]), seconds=round(s["seconds"]),
+                         s_per_24h=round(s["seconds"] / s["hours"] * 24, 1) if s["hours"] else "",
+                         aves_s_per_24h=round(s["aves"] / s["hours"] * 24, 1) if s["hours"] else ""))
+    if not rows:
+        return 0
+    with open(os.path.join(out, "summary.csv"), "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    tot = {k: sum(r[k] for r in rows) for k in ("recordings", "done", "hours", "rumbles", "seconds")}
+    missing = tot["recordings"] - tot["done"]
+    m = machine()
+    md = ["# Detection summary", "", f"Updated {time.strftime('%Y-%m-%d %H:%M')} on {m['computer']} "
+          f"({m['gpu']}, torch {m['torch']}, Python {m['python']}).", "",
+          f"- Model: {info['experiment']}, rule {info['rule']}; tables keep detections scoring >= {min_score:.4f} "
+          f"(validated cut-off {info['cut_off']:.4f})",
+          f"- **{tot['done']} of {tot['recordings']} recordings done**, {tot['hours']:,.1f} h of audio "
+          f"({tot['hours'] / 24:,.1f} days), **{tot['rumbles']:,} rumbles**",
+          f"- Time: {fmt_dur(tot['seconds'])} in total"
+          + (f", {tot['seconds'] / tot['hours'] * 24:.0f} s per 24 h of audio" if tot["hours"] else ""),
+          f"- Check: {'every finished recording has a Raven table and probabilities that match' if not problems else f'{len(problems)} PROBLEMS, listed below'}"
+          + (f"; {missing} recordings not done yet (or failed, see failed.txt)" if missing else ""), "",
+          "| Site | Recordings | Done | Hours | Days | Rumbles | Per day | Time | s per 24 h | AVES s per 24 h |",
+          "|---|---|---|---|---|---|---|---|---|---|"]
+    md += [f"| {r['site']} | {r['recordings']} | {r['done']} | {r['hours']:,.1f} | {r['days']:.1f} | {r['rumbles']:,} "
+           f"| {r['rumbles_per_day']} | {r['time']} | {r['s_per_24h']} | {r['aves_s_per_24h']} |" for r in rows]
+    if problems:
+        md += ["", "## Problems", ""] + [f"- {p}" for p in problems]
+    md += ["", "Per recording: timings.csv. Everything printed: run_log.txt. Model and settings: detector.json."]
+    with open(os.path.join(out, "summary.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(md) + "\n")
+    return missing
 
 
-def _worker(args):
-    final, device, threads, files, out_dir, roots, readers, fake, half, k = args
-    w = dc.Writer(roots, [])
-    det = Detector(final, device, threads, fake, half)
-    return process_files(det, files, out_dir, w, readers, label=f"[worker {k}] "), getattr(det, "half_check", None)
+def cmd_table(a):
+    import numpy as np
+    info = json.load(open(os.path.join(a.out, "detector.json")))
+    rule = info["rule"]
+    min_score = info["cut_off"] if a.min_score is None else a.min_score
+    jobs = []
+    for dirpath, dirs, names in os.walk(a.out):
+        dirs.sort()
+        for n in sorted(names):
+            if n.endswith(PROBS_SUFFIX):
+                jobs.append((None, os.path.join(dirpath, n[:-len(PROBS_SUFFIX)])))
+    src_of = {}
+    timing = os.path.join(a.out, "timings.csv")
+    if os.path.exists(timing):  # the original audio paths, for the Begin Path column
+        for r in csv.DictReader(open(timing)):
+            src_of[os.path.splitext(os.path.basename(r["file"]))[0]] = r["file"]
+    jobs = [(src_of.get(os.path.basename(b), os.path.basename(b) + ".wav"), b) for _, b in jobs]
+    n = 0
+    for src, base in jobs:
+        prob = np.load(dc.long_path(base + PROBS_SUFFIX)).astype(np.float32)
+        rows = file_rows(prob, rule, min_score, src)
+        write_table(base + TABLE_SUFFIX, rows)
+        n += len(rows)
+    for d, files in by_out_folder(jobs).items():
+        folder_table(d, files, rule, min_score)
+    info["min_score_in_tables"] = min_score
+    with open(os.path.join(a.out, "detector.json"), "w") as f:
+        json.dump(info, f, indent=1)
+    write_summary(a.out, jobs, info, min_score)
+    log(f"rewrote {len(jobs)} tables with Score >= {min_score}: {n} rumbles; summary.md updated")
 
 
-def summarize(rows, wall, a, device_name):
-    hours = sum(r["hours"] for r in rows) or 1e-9
-    per24 = {k: sum(r[k] for r in rows) / hours * 24 for k in STEPS + ("read_wait",)}
-    s = {"files": len(rows), "audio_hours": round(hours, 2), "wall_s": round(wall, 1),
-         "wall_s_per_24h": round(wall / hours * 24, 1), "device": device_name, "workers": a.workers,
-         "threads": a.threads, "readers": a.readers, "half": a.half, "step_s_per_24h": {k: round(v, 2) for k, v in per24.items()},
-         "files_detail": rows}
-    if rows:
-        s["median_file_wall_s"] = round(statistics.median(r["wall"] for r in rows), 1)
-    return s
+################################################################################
+# survey
+################################################################################
+
+def time_one(det, path, out_dir):
+    """Seconds for each step on one file: raw network read, read + resample, AVES, classifier,
+    and writing its outputs to --out compared with a local folder."""
+    import numpy as np
+    t0 = time.time()
+    n = 0
+    with open(dc.long_path(path), "rb") as f:  # the first read comes from the network
+        while True:
+            b = f.read(16 << 20)
+            if not b:
+                break
+            n += len(b)
+    raw = time.time() - t0
+    y, t_load = load(path)  # now mostly from Windows' file cache: the resampling part
+    hours = y.shape[0] / 500 / 3600
+    t1 = time.time()
+    emb = det.embeddings(y)
+    t2 = time.time()
+    prob = det.probs(emb)
+    t3 = time.time()
+    rows = file_rows(prob, det.rule, det.cut_off, path)
+
+    def write_test(folder):
+        os.makedirs(folder, exist_ok=True)
+        t = time.time()
+        for k in range(20):
+            b = os.path.join(folder, f"_write_test_{k}")
+            np.save(b + PROBS_SUFFIX, prob.astype(np.float16))
+            write_table(b + TABLE_SUFFIX, rows)
+        s = (time.time() - t) / 20
+        for k in range(20):
+            for suf in (PROBS_SUFFIX, TABLE_SUFFIX):
+                try:
+                    os.remove(os.path.join(folder, f"_write_test_{k}{suf}"))
+                except OSError:
+                    pass
+        return s
+
+    w_out = write_test(os.path.join(out_dir, "_write_test"))
+    shutil.rmtree(os.path.join(out_dir, "_write_test"), ignore_errors=True)
+    local = tempfile.mkdtemp(prefix="rumble_write_test_")
+    w_local = write_test(local)
+    shutil.rmtree(local, ignore_errors=True)
+    return dict(file=path, hours=hours, mb=n / 1e6, raw_read_s=raw, mb_per_s=n / 1e6 / max(raw, 1e-9),
+                resample_s=t_load, aves_s=t2 - t1, classify_s=t3 - t2, detections=len(rows),
+                write_out_s=w_out, write_local_s=w_local)
 
 
-def write_report(w, out_dir, s, det_info):
-    st = s["step_s_per_24h"]
-    lines = [f"# Detector timing: {s['files']} recording(s), {s['audio_hours']} h of audio", "",
-             f"Model `{det_info['experiment']}`, rule {det_info['rule']}, cut-off {det_info['cut_off']}.",
-             f"Device {s['device']}, {s['workers']} process(es), {s['threads'] or 'all'} thread(s) each, "
-             f"{s['readers']} recording(s) read ahead, AVES in {'half' if s['half'] else 'full'} precision.", "",
-             "| Step | Time per 24 h of audio |", "|---|---|"]
-    for k in STEPS:
-        lines.append(f"| {k} | {fmt_dur(st[k])} |")
-    lines += [f"| waited for reading | {fmt_dur(st['read_wait'])} |", "",
-              f"**Wall clock: {fmt_dur(s['wall_s'])} in all, {fmt_dur(s['wall_s_per_24h'])} per 24 h of audio.** "
-              "With several processes, step times add up across processes, so they can exceed the wall clock.", ""]
-    c = s.get("half_check")
-    if c:
-        lines += [f"Half precision against full, on the first recording: fingerprint similarity {c['cosine_mean']} "
-                  f"(worst {c['cosine_min']}); {c['alarms_half']} alarms against {c['alarms_full']}, "
-                  f"{c['alarms_identical']} of them identical.", ""]
-    with w.open(os.path.join(out_dir, "timing.md")) as f:
-        f.write("\n".join(lines) + "\n")
-    w.json(os.path.join(out_dir, "timing.json"), {**s, **det_info})
-    print("\n".join(lines))
+def cmd_survey(a):
+    files = find_audio(a.inputs)
+    if not files:
+        sys.exit("No recordings found.")
+    log(f"{len(files)} recordings; reading their headers...")
+    rows = []
+    for i, (root, p) in enumerate(files):
+        info = audio_info(p)
+        rows.append(dict(root=root, path=p, site=site_of(p), **info))
+        if (i + 1) % 200 == 0:
+            log(f"  {i + 1}/{len(files)}")
+    os.makedirs(a.out, exist_ok=True)
+    with open(os.path.join(a.out, "survey_files.csv"), "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
 
+    timings, tmd = {}, []
+    if not a.no_timing:
+        det = Detector(a.model, fake=a.fake_embedder)
+        for sr in sorted({r["sr"] for r in rows if not r["error"]}):
+            ok = [r for r in rows if r["sr"] == sr and not r["error"] and r["hours"] > 0.5]
+            if not ok:
+                continue
+            pick = sorted(ok, key=lambda r: r["hours"])[len(ok) // 2]  # a typical-length file
+            log(f"timing one {sr} Hz file: {pick['path']}")
+            timings[sr] = time_one(det, pick["path"], a.out)
+            log(f"  {timings[sr]}")
+        tmd = ["## Measured on one file per sample rate", "",
+               "| Sample rate | File | Hours | Network read | Read speed | Resample | AVES | Classifier | Write to --out | Write locally |",
+               "|---|---|---|---|---|---|---|---|---|---|"]
+        for sr, t in timings.items():
+            tmd.append(f"| {sr} Hz | {os.path.basename(t['file'])} | {t['hours']:.1f} | {t['raw_read_s']:.1f} s "
+                      f"({t['mb']:.0f} MB) | {t['mb_per_s']:.0f} MB/s | {t['resample_s']:.1f} s | {t['aves_s']:.1f} s "
+                      f"| {t['classify_s']:.2f} s | {t['write_out_s'] * 1000:.0f} ms | {t['write_local_s'] * 1000:.0f} ms |")
+        tmd.append("")
+
+
+    def speeds(sr):
+        """Seconds per 24 h of audio at this sample rate: read + resample, AVES + classifier, writing."""
+        t = timings.get(sr)
+        if t:
+            k = 24 / t["hours"]
+            return (t["raw_read_s"] + t["resample_s"]) * k, (t["aves_s"] + t["classify_s"]) * k, t["write_out_s"] * k
+        # no timing: guess from 16-bit audio at ~100 MB/s and the measured AVES speed
+        return sr * 2 * 86400 / 100e6 + sr * 86400 / 40e6, AVES_S_PER_24H, 0.5
+
+    def per_day(sr):
+        read, aves, write = speeds(sr)
+        return max(read, aves) + write
+
+    md = ["# Survey of the recordings", "", f"Made {time.strftime('%Y-%m-%d %H:%M')}. "
+          "Estimated times assume reading + resampling overlaps with AVES (as `run` does).", ""]
+    for root in sorted({r["root"] for r in rows}):
+        rs = [r for r in rows if r["root"] == root]
+        ok = [r for r in rs if not r["error"]]
+        hours = sum(r["hours"] for r in ok)
+        sites = sorted({r["site"] for r in ok})
+        md += [f"## {root}", "",
+               f"- **{len(rs)} recordings**, {len(sites)} sites, **{hours:,.0f} hours** ({hours / 24:,.1f} recording-days), "
+               f"{sum(r['bytes'] for r in rs) / 1e9:,.1f} GB",
+               "- sample rates: " + ", ".join(f"{sr} Hz x {sum(1 for r in ok if r['sr'] == sr)}"
+                                              for sr in sorted({r["sr"] for r in ok})),
+               f"- formats: {', '.join(sorted({r['format'] for r in ok}))}; channels: {sorted({r['channels'] for r in ok})}",
+               f"- file length: median {statistics.median([r['hours'] for r in ok]):.2f} h, "
+               f"shortest {min(r['hours'] for r in ok):.2f} h, longest {max(r['hours'] for r in ok):.2f} h"
+               if ok else "- no readable files"]
+        bad = [r for r in rs if r["error"]]
+        short = [r for r in ok if r["hours"] < 0.01]
+        if bad:
+            md.append(f"- **{len(bad)} files could not be read** (listed in survey_files.csv, column error)")
+        if short:
+            md.append(f"- {len(short)} files are under 36 s long and will give no detections")
+        md += ["", "| Site | Files | Hours | Days | Sample rate | Estimated time | First file | Last file |",
+               "|---|---|---|---|---|---|---|---|"]
+        for s in sites:
+            ss = [r for r in ok if r["site"] == s]
+            h = sum(r["hours"] for r in ss)
+            t = sum(r["hours"] / 24 * per_day(r["sr"]) for r in ss)
+            md.append(f"| {s} | {len(ss)} | {h:,.1f} | {h / 24:.1f} | {', '.join(str(x) for x in sorted({r['sr'] for r in ss}))} "
+                      f"| {fmt_dur(t)} "
+                      f"| {os.path.basename(ss[0]['path'])} | {os.path.basename(ss[-1]['path'])} |")
+        md.append("")
+
+    md += tmd
+    md += ["## Estimated time for `run`", "",
+           "Per 24 h of audio: reading + resampling happens in the background while AVES works on the "
+           "previous file, so each file costs about the slower of the two, plus writing.", "",
+           "| Folder | Hours | Read + resample per 24 h | AVES per 24 h | Estimate |", "|---|---|---|---|---|"]
+    grand = 0.0
+    for root in sorted({r["root"] for r in rows}):
+        ok = [r for r in rows if r["root"] == root and not r["error"]]
+        srs = sorted({r["sr"] for r in ok})
+        tot = sum(r["hours"] / 24 * per_day(r["sr"]) for r in ok)
+        grand += tot
+        md.append(f"| {root} | {sum(r['hours'] for r in ok):,.0f} | "
+                  f"{', '.join(f'{fmt_dur(speeds(sr)[0])} ({sr} Hz)' for sr in srs)} | "
+                  f"{', '.join(fmt_dur(speeds(sr)[1]) for sr in srs)} | **{fmt_dur(tot)}** |")
+    md += ["", f"**All folders: about {fmt_dur(grand)}** on this PC, run one after the other.",
+           "" if timings else "(Guessed, not measured: run survey without --no-timing on the PC that will do the work.)"]
+    with open(os.path.join(a.out, "survey.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(md) + "\n")
+    print("\n".join(md))
+    log(f"wrote {os.path.join(a.out, 'survey.md')} and survey_files.csv")
+
+
+################################################################################
 
 def main(argv=None):
-    import multiprocessing as mp
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("inputs", nargs="+", help="sound files or folders")
-    p.add_argument("--source", default=dc.DEFAULT_SOURCE)
-    p.add_argument("--final", help="final_model.json (default <source>\\Configurations\\_study\\"
-                                   "final_detections\\final_model.json)")
-    p.add_argument("--out", help="where the Raven tables and timing go "
-                                 "(default <source>\\Configurations\\_detect\\<date-time>)")
-    p.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
-    p.add_argument("--workers", type=int, default=1, help="recordings processed side by side")
-    p.add_argument("--threads", type=int, default=0, help="CPU threads per process (0: all cores / workers)")
-    p.add_argument("--readers", type=int, default=3, help="recordings read ahead in the background (0: none)")
-    p.add_argument("--half", action="store_true", default=None,
-                   help="AVES in half precision, compared with full on the first file (default on the GPU)")
-    p.add_argument("--full", dest="half", action="store_false", help="AVES in full precision")
+    p.add_argument("step", choices=["survey", "run", "table"])
+    p.add_argument("inputs", nargs="*", help="deployment folders (searched with subfolders) or single files")
+    p.add_argument("--out", required=True, help="where the results go (can be on the network drive)")
+    p.add_argument("--model", default=DEFAULT_MODEL, help=f"final_model.json of the rerun (default {DEFAULT_MODEL})")
+    p.add_argument("--min-score", type=float, default=None,
+                   help="keep detections scoring at least this (default: the model's cut-off at 80%% recall "
+                        "on the validation days; 0 keeps every detection of the alarm rule)")
+    p.add_argument("--prefetch", type=int, default=2, help="files read + resampled ahead in the background")
+    p.add_argument("--redo", action="store_true", help="redo files that already have a table")
+    p.add_argument("--stall-minutes", type=float, default=20,
+                   help=f"run: stop with exit code {STALLED} after this long without progress (0: never)")
+    p.add_argument("--no-estimate", dest="estimate", action="store_false", help="don't read every header first for the time left")
+    p.add_argument("--no-timing", action="store_true", help="survey: only list the files, don't time one")
     p.add_argument("--fake-embedder", action="store_true", help=argparse.SUPPRESS)
     a = p.parse_args(argv)
-    import torch
-    device = a.device if a.device != "auto" else ("cuda" if torch.cuda.is_available() else "cpu")
-    if a.half is None:
-        a.half = device == "cuda"  # identical alarms on the lab PC's RTX 4060, 3x faster AVES
-    if device == "cuda" and a.workers > 1:
-        sys.exit("--workers is for the CPU; on the GPU one process is fastest")
-    if device == "cpu" and not a.threads:
-        a.threads = max(1, (os.cpu_count() or 1) // a.workers)
-    a.final = a.final or os.path.join(a.source, "Configurations", "_study", "final_detections", "final_model.json")
-    if not os.path.exists(a.final):
-        sys.exit(f"{a.final} not found: run tools\\study.py first, or give --final")
-    out = a.out or os.path.join(a.source, "Configurations", "_detect", time.strftime("%Y-%m-%d_%H%M%S"))
-    forbidden = [dc.ORIGINAL_DATA]
-    try:
-        root = dc.find_dataset_root(a.source)
-        forbidden += [os.path.join(root, "Training"), os.path.join(root, "Testing")]
-    except SystemExit:
-        pass
-    w = dc.Writer([out], forbidden)
-    w.makedirs(out)
-    files = find_recordings(a.inputs)
-    if not files:
-        sys.exit("no sound files found")
-    name, model_path, rule, cut = load_final(a.final)
-    det_info = {"experiment": name, "model": model_path, "rule": rule, "cut_off": cut}
-    dev_name = torch.cuda.get_device_name(0) if device == "cuda" else f"CPU ({os.cpu_count()} logical cores)"
-    log(f"{len(files)} recording(s); model {name}; {dev_name}; {a.workers} process(es) x "
-        f"{a.threads or 'default'} thread(s); {a.readers} read ahead; {'half' if a.half else 'full'} precision")
-    t0 = time.time()
-    if a.workers <= 1:
-        det = Detector(a.final, device, a.threads, a.fake_embedder, a.half)
-        load_s = time.time() - t0
-        log(f"models loaded in {load_s:.1f} s")
-        t0 = time.time()
-        rows = process_files(det, files, out, w, a.readers)
-        checks = [getattr(det, "half_check", None)]
-    else:
-        shares = [files[k::a.workers] for k in range(a.workers)]
-        jobs = [(a.final, device, a.threads, sh, out, [out], a.readers, a.fake_embedder, a.half, k)
-                for k, sh in enumerate(shares) if sh]
-        with mp.get_context("spawn").Pool(len(jobs)) as pool:
-            parts = pool.map(_worker, jobs)
-        rows = [r for part, _ in parts for r in part]
-        checks = [c for _, c in parts]
-    wall = time.time() - t0
-    s = summarize(rows, wall, a, dev_name)
-    s["half_check"] = next((c for c in checks if c), None)
-    write_report(w, out, s, det_info)
-    log(f"wrote {len(rows)} Raven table(s), timing.md and timing.json in {out}")
-    return s
+    if a.step != "table" and not a.inputs:
+        p.error("give at least one deployment folder")
+    a.out = os.path.abspath(a.out)
+    for r in a.inputs:
+        if dc.is_under(a.out, r):
+            sys.exit(f"--out {a.out} is inside the input folder {r}; pick a folder outside the recordings.")
+    {"survey": cmd_survey, "run": cmd_run, "table": cmd_table}[a.step](a)
 
 
 if __name__ == "__main__":
