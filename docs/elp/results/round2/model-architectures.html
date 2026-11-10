@@ -1,0 +1,257 @@
+<title>Rumble Detector Architectures</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+/* Layout: one reading column; each model is a section with a box-and-arrow flow and a score chip */
+:root{
+  --bg:#f6f7f3; --surface:#ffffff; --fg:#1f2620; --muted:#5d6a60; --line:#d5dcd3;
+  --accent:#2f6b4f; --accent-soft:#e2efe7; --warn:#a2581c; --warn-soft:#f6e9dc;
+  --enc:#e8eef6; --enc-fg:#27466b; --head:#f3ecdf; --head-fg:#6b4a1a; --chk:#efe6f3; --chk-fg:#5a2f6b;
+  --display:"Fraunces",Georgia,serif; --body:"Source Sans 3",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#161b17; --surface:#1e2520; --fg:#e4ebe4; --muted:#9aa89d; --line:#334037;
+  --accent:#7cc4a0; --accent-soft:#22362b; --warn:#e3a46f; --warn-soft:#3a2b1e;
+  --enc:#1f2b3a; --enc-fg:#a9c4e6; --head:#352c1f; --head-fg:#e6c999; --chk:#2f2436; --chk-fg:#d6b3e6; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#161b17; --surface:#1e2520; --fg:#e4ebe4; --muted:#9aa89d; --line:#334037;
+  --accent:#7cc4a0; --accent-soft:#22362b; --warn:#e3a46f; --warn-soft:#3a2b1e;
+  --enc:#1f2b3a; --enc-fg:#a9c4e6; --head:#352c1f; --head-fg:#e6c999; --chk:#2f2436; --chk-fg:#d6b3e6; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:17px/1.6 var(--body)}
+main{max-width:760px;margin:0 auto;padding-block:40px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2{font-family:var(--display);font-weight:600;text-wrap:balance;line-height:1.2}
+h1{font-size:2.1rem;margin:0 0 8px}
+h2{font-size:1.35rem;margin:0}
+h3{font-size:1rem;margin:24px 0 4px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+p{margin:8px 0}
+.lede{color:var(--muted);font-size:1.05rem}
+section{border-top:1px solid var(--line);padding-block:28px}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
+.chip{font:13px var(--mono);padding:3px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.chip.bad{background:var(--warn-soft);color:var(--warn)}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:14px 0;font-size:.9rem}
+.b{padding:7px 11px;border-radius:6px;border:1px solid var(--line);background:var(--surface);line-height:1.3}
+.b small{display:block;color:var(--muted);font-size:.78rem}
+.enc{background:var(--enc);color:var(--enc-fg);border-color:transparent}
+.head{background:var(--head);color:var(--head-fg);border-color:transparent}
+.chk{background:var(--chk);color:var(--chk-fg);border-color:transparent}
+.ar{color:var(--muted)}
+.stack{display:flex;flex-direction:column;gap:6px}
+.bars{display:grid;grid-template-columns:minmax(0,13rem) 1fr;gap:6px 12px;font-size:.9rem;margin-top:12px;font-variant-numeric:tabular-nums}
+.bars span{min-width:0}
+.bar{height:18px;background:var(--accent);border-radius:3px;position:relative}
+.bar.ref{background:var(--muted)}
+.bar.bad{background:var(--warn)}
+.bar i{position:absolute;left:calc(100% + 6px);top:-1px;font:12px var(--mono);font-style:normal;color:var(--fg)}
+.bwrap{padding-right:52px}
+ul{padding-left:20px;margin:8px 0}
+.note{font-size:.9rem;color:var(--muted)}
+code{font-family:var(--mono);font-size:.85em}
+dl.facts{display:grid;grid-template-columns:minmax(0,8.5rem) minmax(0,1fr);gap:6px 14px;margin:12px 0}
+dl.facts dt{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding-top:3px}
+dl.facts dd{margin:0}
+@media (max-width:520px){dl.facts{grid-template-columns:1fr}dl.facts dt{padding-top:8px}}
+ol.steps{padding-left:22px;margin:8px 0}ol.steps li{margin:6px 0}
+.eg{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:10px 14px;margin:12px 0;font-size:.93rem}
+.eg b{color:var(--accent)}
+nav{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.9rem;margin:14px 0 0}
+nav a{color:var(--accent)}
+</style>
+<main>
+<h1>How each rumble detector works</h1>
+<p class="lede">Every model here listens to 24-hour forest recordings and raises an alarm when it thinks an elephant rumble is happening. They are all built from the same few parts. This page explains those parts slowly first, then goes through each model: what goes in, what happens inside, what comes out, why we hoped it would help and what actually happened. Scores are false alarms per hour on the validation days, at 80–85% of rumbles found. <b>Lower is better.</b></p>
+<nav><a href="#parts">The parts</a><a href="#scores">Scoreboard</a><a href="#final">Final model</a><a href="#dasheng">Dasheng</a><a href="#ens">Averaging heads</a><a href="#late">AVES + Dasheng averaged</a><a href="#fusion">Fingerprints joined</a><a href="#big">Dasheng 0.6B</a><a href="#lora">LoRA</a><a href="#check">Detect then check</a><a href="#r1">Round 1 ideas</a></nav>
+
+<section id="parts">
+<div class="top"><h2>The parts every model is built from</h2></div>
+<div class="flow">
+ <div class="b">24 h recording</div><span class="ar">→</span>
+ <div class="b">① speed it up</div><span class="ar">→</span>
+ <div class="b enc">② encoder</div><span class="ar">→</span>
+ <div class="b">fingerprint every 0.64 s</div><span class="ar">→</span>
+ <div class="b head">③ small head</div><span class="ar">→</span>
+ <div class="b">probability every 0.64 s</div><span class="ar">→</span>
+ <div class="b">④ alarm rule</div>
+</div>
+
+<h3>① Speed it up</h3>
+<p>Elephant rumbles are very deep, about 10–30 Hz, below what people can hear. The pretrained networks we use learned from normal sounds, which are much higher. So we play the recording faster, like a tape on fast-forward. At 32× a 20 Hz rumble becomes a 640 Hz tone, which sits right in the range those networks know well. Speeding up also shrinks the work: a 24-hour day becomes 45 minutes of "audio" for AVES.</p>
+
+<h3>② The encoder: turns sound into fingerprints</h3>
+<p>An encoder is a big network that someone else already trained on huge amounts of audio. We don't change it. For each short slice of time it outputs a list of 768 numbers, called a fingerprint or embedding. Sounds that are alike get similar fingerprints, so a rumble's fingerprint looks different from wind, rain or an engine.</p>
+<p>Inside, both encoders we use work in two steps:</p>
+<ol class="steps">
+ <li><b>A front end</b> cuts the audio into small slices and describes each one. For AVES this is a stack of convolution layers; for Dasheng it's a mel spectrogram (a picture of pitch over time) cut into patches.</li>
+ <li><b>A transformer</b> (12 layers) then lets every slice "look at" every other slice in the stretch it was given and update its own description. That's why one fingerprint knows about the sound before and after it, often a minute or more of real time, not only its own 0.64 s.</li>
+</ol>
+<ul>
+ <li><b>AVES</b>: 95 million weights. Trained by the Earth Species Project on animal sounds. One fingerprint per 20 ms of its input; at 32× that's one per 0.64 s of real time.</li>
+ <li><b>Dasheng</b>: 86 million weights. Trained by Xiaomi on 272,000 hours of all kinds of audio (speech, music, nature, traffic, machines). One fingerprint per 40 ms, so we speed up 16× to land on the same 0.64 s.</li>
+</ul>
+
+<h3>③ The small head: the only part we train</h3>
+<p>The head takes fingerprints and answers one question for each 0.64 s step: "is a rumble happening right now?" It works like this:</p>
+<ol class="steps">
+ <li>Take the fingerprint for this step and the 8 steps before and after it. That's 17 fingerprints, about 11 seconds.</li>
+ <li>Squeeze each fingerprint from 768 numbers down to 64. This keeps what matters and makes the head small.</li>
+ <li>Put the 17 squeezed fingerprints side by side (17 × 64 = 1,088 numbers).</li>
+ <li>Pass them through one layer of 192 units, then a final layer with 2 outputs: "rumble" and "not rumble".</li>
+ <li>Turn those into a probability between 0 and 1.</li>
+</ol>
+<p>The whole head has about 260,000 weights, a few hundred times smaller than the encoder, so it trains in minutes and runs almost instantly. It learns from our labelled days: thousands of rumble steps, plus examples of rain, wind, vehicles and random quiet times.</p>
+
+<h3>④ The alarm rule: from probabilities to alarms</h3>
+<p>The head gives a wobbly line of probabilities, one every 0.64 s. The rule turns that line into a list of alarms:</p>
+<ol class="steps">
+ <li><b>Smooth</b> the line a little (average over a few steps) so one odd value doesn't matter.</li>
+ <li><b>Mark</b> every step above 0.2.</li>
+ <li><b>Join</b> marked pieces with gaps of up to 3 steps (about 2 s) into one alarm.</li>
+ <li><b>Drop</b> alarms shorter than a few steps; real rumbles last seconds.</li>
+ <li><b>Score</b> each alarm by its highest probability. Later we pick the score cut-off that finds 80% or 85% of rumbles.</li>
+</ol>
+<div class="eg"><b>Example.</b> Probabilities over 8 steps: 0.05, 0.31, 0.74, 0.88, 0.15, 0.62, 0.40, 0.06. Steps 2–4 and 6–7 are above 0.2, the gap between them is 1 step, so they join into one alarm from step 2 to step 7 (about 4 s) with score 0.88.</div>
+<p>We try about 2,000 combinations of these settings on the validation days and keep the best for each model, so every model gets a fair rule.</p>
+</section>
+
+<section id="scores">
+<div class="top"><h2>Scoreboard</h2><span class="chip">validation, lower is better</span></div>
+<div class="bars bwrap" id="bars"></div>
+<p class="note">Grey is the current final model. Orange did worse than it. "ens" and "×5" mean several copies averaged. Test-set results come with tonight's run.</p>
+</section>
+
+<section id="final">
+<div class="top"><h2>Final model (AVES), the reference</h2><span class="chip">0.159</span></div>
+<div class="flow"><div class="b">audio at 32×</div><span class="ar">→</span><div class="b enc">AVES</div><span class="ar">→</span><div class="b head">1 head</div><span class="ar">→</span><div class="b">alarm rule</div></div>
+<dl class="facts">
+ <dt>In</dt><dd>The recording, sped up 32×.</dd>
+ <dt>Inside</dt><dd>AVES makes a fingerprint every 0.64 s; one small head reads 11 s of them at a time.</dd>
+ <dt>Out</dt><dd>A rumble probability every 0.64 s, turned into alarms.</dd>
+ <dt>Result</dt><dd>0.159 false alarms per hour. This is the model to beat.</dd>
+</dl>
+</section>
+
+<section id="dasheng">
+<div class="top"><h2>Dasheng instead of AVES</h2><span class="chip">0.129 · 5 averaged: 0.087</span></div>
+<div class="flow"><div class="b">audio at 16×</div><span class="ar">→</span><div class="b enc">Dasheng</div><span class="ar">→</span><div class="b head">1 head</div><span class="ar">→</span><div class="b">alarm rule</div></div>
+<dl class="facts">
+ <dt>Change</dt><dd>Only the encoder is swapped. Same head, same training data, same rule search.</dd>
+ <dt>Why</dt><dd>AVES only heard animals in training. Dasheng heard almost 3,000 times more audio, of every kind, so it learned to tell many more kinds of background noise apart. Our false alarms come from exactly that: wind, rain, engines.</dd>
+ <dt>Cost</dt><dd>About the same as AVES.</dd>
+ <dt>Result</dt><dd>0.129, about 20% fewer false alarms than the final model. On the tests it was as good or better on Samples A and B, but worse on the vehicle recordings (0.57 false alarms per hour vs 0.25).</dd>
+</dl>
+</section>
+
+<section id="ens">
+<div class="top"><h2>Averaging several heads ("ens")</h2><span class="chip">AVES 0.120 · Dasheng 0.087</span></div>
+<div class="flow"><div class="b enc">Encoder (runs once)</div><span class="ar">→</span>
+ <div class="stack"><div class="b head">head 1</div><div class="b head">head 2</div><div class="b head">…</div><div class="b head">head 5</div></div>
+ <span class="ar">→</span><div class="b">average the 5 probabilities</div><span class="ar">→</span><div class="b">alarm rule</div></div>
+<dl class="facts">
+ <dt>Change</dt><dd>We already train every head 5 times with different random starting points (to measure how much results vary). Here we use all 5 at once and average their probabilities at each step.</dd>
+ <dt>Why</dt><dd>Each copy ends up slightly different and makes slightly different mistakes. One copy may fire on a gust of wind; the other four probably won't, so the average stays low. It's like asking five people instead of one.</dd>
+ <dt>Cost</dt><dd>Almost nothing. The expensive encoder still runs once; the five heads are tiny.</dd>
+ <dt>Result</dt><dd>It helped every model. AVES went from 0.159 to 0.120, Dasheng from 0.129 to 0.087.</dd>
+</dl>
+</section>
+
+<section id="late">
+<div class="top"><h2>AVES + Dasheng, probabilities averaged ("late")</h2><span class="chip">0.088 · all 10 heads: 0.069 (best)</span></div>
+<div class="flow">
+ <div class="stack"><div class="b enc">audio 32× → AVES → head</div><div class="b enc">audio 16× → Dasheng → head</div></div>
+ <span class="ar">→</span><div class="b">average the two probabilities, step by step</div><span class="ar">→</span><div class="b">alarm rule</div></div>
+<dl class="facts">
+ <dt>Change</dt><dd>Run both encoders on the same recording, each with its own already-trained head. At every 0.64 s step, average AVES's probability and Dasheng's probability. "Late" means the two are combined at the very end, after each has made its own decision.</dd>
+ <dt>Why</dt><dd>The two encoders learned from different sounds, so they get fooled by different things. AVES might fire on a bird call, Dasheng on an engine. A real rumble usually gets a high score from both, while a false alarm usually only fools one, so its average drops below the cut-off.</dd>
+ <dt>Example</dt><dd>A rumble: AVES 0.9, Dasheng 0.8 → average 0.85, alarm kept. A truck: AVES 0.2, Dasheng 0.7 → average 0.45, now below the cut-off for 80% of rumbles.</dd>
+ <dt>Cost</dt><dd>Both encoders run, so about twice the cost of one model.</dd>
+ <dt>Result</dt><dd>0.088 with one head each. Averaging all 10 heads (5 AVES + 5 Dasheng), called <b>late_ens</b>, gives <b>0.069</b>, fewer than half the final model's false alarms. The best so far.</dd>
+</dl>
+</section>
+
+<section id="fusion">
+<div class="top"><h2>AVES + Dasheng, fingerprints joined ("fusion")</h2><span class="chip">0.129 · 5 averaged: 0.077</span></div>
+<div class="flow">
+ <div class="stack"><div class="b enc">AVES fingerprint (768)</div><div class="b enc">Dasheng fingerprint (768)</div></div>
+ <span class="ar">→</span><div class="b">glue together (1,536)</div><span class="ar">→</span><div class="b head">1 new head</div><span class="ar">→</span><div class="b">alarm rule</div></div>
+<dl class="facts">
+ <dt>Change</dt><dd>Instead of two heads voting at the end, glue the two fingerprints for each step into one long list of 1,536 numbers and train one new head on that. Combining at the input is sometimes called "early" fusion.</dd>
+ <dt>Why</dt><dd>In theory one head that sees both can learn smarter combinations, such as "trust Dasheng about engines but AVES about animal calls".</dd>
+ <dt>Cost</dt><dd>Same as late fusion: both encoders run.</dd>
+ <dt>Result</dt><dd>One head: 0.129, no better than Dasheng alone. Averaging 5: 0.077, close to late_ens but not better. Our guess is that the one head leans on whichever encoder is easier and ignores the other, while late fusion forces both to have a say.</dd>
+</dl>
+</section>
+
+<section id="big">
+<div class="top"><h2>Dasheng 0.6B, the big version</h2><span class="chip">0.114 · 5 averaged: 0.084</span></div>
+<div class="flow"><div class="b">audio at 16×</div><span class="ar">→</span><div class="b enc">Dasheng 0.6B<small>630M weights</small></div><span class="ar">→</span><div class="b">fingerprint (1,280)</div><span class="ar">→</span><div class="b head">1 head</div><span class="ar">→</span><div class="b">alarm rule</div></div>
+<dl class="facts">
+ <dt>Change</dt><dd>Same as Dasheng, but with the largest version Xiaomi released: 7 times more weights, and fingerprints of 1,280 numbers instead of 768. The head's first layer simply takes 1,280 inputs.</dd>
+ <dt>Why</dt><dd>Bigger encoders usually make richer fingerprints.</dd>
+ <dt>Cost</dt><dd>About 7× Dasheng's compute, and 140 GB of disk for the fingerprints.</dd>
+ <dt>Result</dt><dd>A bit better than normal Dasheng (0.114 vs 0.129; averaged 0.084 vs 0.087). But late_ens is better and cheaper, so it isn't worth it.</dd>
+</dl>
+</section>
+
+<section id="lora">
+<div class="top"><h2>Dasheng fine-tuned with LoRA</h2><span class="chip bad">0.356 · 5 averaged: 0.223</span></div>
+<div class="flow"><div class="b">82 s clip at 16×</div><span class="ar">→</span><div class="b enc">Dasheng + small adapters<small>adapters trained</small></div><span class="ar">→</span><div class="b head">head, trained together</div><span class="ar">→</span><div class="b">alarm rule</div></div>
+<dl class="facts">
+ <dt>Change</dt><dd>Everywhere else the encoder is frozen: it never learns about rumbles. Here we let it learn a little. Retraining all 86 million weights on our small dataset would wreck what it knows, so we use LoRA: next to each of Dasheng's big weight matrices we add a tiny trainable "adapter" (two thin matrices of width 8) whose output is added on. The original weights stay frozen; only the adapters and the head learn.</dd>
+ <dt>How it trained</dt><dd>On about 8,100 clips of 82 seconds each (rumbles, noise and random stretches), with the head learning at the same time.</dd>
+ <dt>Why</dt><dd>An encoder that adjusts itself to rumbles should make cleaner fingerprints for them.</dd>
+ <dt>Cost</dt><dd>About 1.3× Dasheng at inference (the clips overlap).</dd>
+ <dt>Result</dt><dd><b>Worse</b> than frozen Dasheng: 0.356. It did very well on its own held-out clips (precision 0.996) but badly on new days. That's the usual sign of overfitting: 8,100 clips is too few to change a model this large without it learning quirks of the training days. More data, or stronger limits on the adapters, might fix it, but it's an expensive road.</dd>
+</dl>
+</section>
+
+<section id="check">
+<div class="top"><h2>Detect, then double-check</h2><span class="chip">best: late_ens + EfficientNet ×5, 0.066</span></div>
+<div class="flow">
+ <div class="b">any model above</div><span class="ar">→</span><div class="b">its alarms</div><span class="ar">→</span>
+ <div class="b">32 s spectrogram picture of each</div><span class="ar">→</span>
+ <div class="b chk">image network</div><span class="ar">→</span>
+ <div class="b">combine both scores</div></div>
+<dl class="facts">
+ <dt>Idea</dt><dd>A first model finds candidate alarms quickly. A second, different kind of model then looks closely at just those moments and gives its own opinion, like a second pair of eyes.</dd>
+ <dt>Step 1</dt><dd>Run a first-stage model (for example late_ens) over the day and collect its alarms.</dd>
+ <dt>Step 2</dt><dd>For each alarm, cut 32 seconds of audio around it and draw a spectrogram: time left to right, pitch from 2 to 250 Hz bottom to top, brightness = loudness. Each pitch row has its usual background level subtracted, so steady noise fades and the rumble's curved bands stand out. The picture is 128 pixels tall and 320 wide.</dd>
+ <dt>Step 3</dt><dd>Show the picture to an image network: <b>ResNet-18</b> (11M weights), <b>EfficientNet-B0</b> (5M) or <b>ConvNeXt-Tiny</b> (28M). These were trained on millions of ImageNet photos, so they already know edges, curves and textures; we retrain them to say "rumble" or "not". The images are greyscale, so the three colour inputs of the first layer are added into one.</dd>
+ <dt>Step 4</dt><dd>Combine the two scores with a geometric mean, √(first × checker). It's low if either one is low, so an alarm survives only if both agree.</dd>
+ <dt>Training</dt><dd>The checker must learn from realistic false alarms. We split the training days in half, trained the first model on one half, collected its alarms on the other half (where it makes real mistakes), and did the same the other way round. That gave about 38,700 pictures, 13,000 of them rumbles. "×5" means 5 checkers averaged.</dd>
+ <dt>Cost</dt><dd>Small. It only looks at alarms, a few hundred pictures per day, not the whole 24 hours.</dd>
+ <dt>Result</dt><dd>On the old AVES model (round 1's m4) the validation score barely moved (0.158), but vehicle false alarms on the test dropped from 0.25 to 0.16 per hour. On top of late_ens: EfficientNet ×5 gives 0.066 (a small gain over 0.069), one EfficientNet 0.077, ResNet-18 ×5 0.087 (worse). ConvNeXt took about 26 hours per training run on this PC, so we dropped it.</dd>
+</dl>
+</section>
+
+<section id="r1">
+<div class="top"><h2>Round 1 ideas</h2></div>
+<p>These all used AVES and changed what goes into the head or how it reads it.</p>
+<h3>m5 · Two-stream: AVES + low-pitch picture</h3>
+<div class="flow"><div class="stack"><div class="b enc">AVES fingerprints</div><div class="b chk">low-pitch spectrogram → small CNN</div></div><span class="ar">→</span><div class="b head">joined head</div></div>
+<p>Next to the AVES path, a small convolutional network reads the raw low-pitch spectrogram from 2 to 250 Hz (64 pitch rows of about 4 Hz each, 4 columns per step). Its output is joined with the squeezed AVES fingerprints before the head's last layers. The idea: give the head the rumble's actual shape directly, in case AVES's sped-up view loses some of it. <b>0.149</b>: slightly better than the final model, and the best round 1 idea on the tests (vehicle 0.24).</p>
+<h3>m7 · AVES + pitch contour</h3>
+<p>Adds 8 hand-made numbers per step from a pitch tracker that follows the 8–30 Hz rumble tone: how strong the tone is, its pitch, and how steady both are. <b>0.161</b>: no change. AVES already captures this.</p>
+<h3>m1 · Long-memory reader (BiGRU)</h3>
+<p>Replaces the 11 s head with a recurrent network that reads 82 seconds forwards and backwards. <b>0.286</b>: worse. The encoder already provides long context, and the bigger head overfits.</p>
+<h3>m2 · Day-normalised fingerprints</h3>
+<p>Subtracts each day's typical fingerprint, to cancel out a site's steady background. <b>0.196</b>: worse. It also removes useful information.</p>
+<h3>BirdAVES</h3>
+<p>AVES retrained with extra bird recordings. <b>0.196</b>: worse than plain AVES. Bird sounds are even further from rumbles.</p>
+</section>
+</main>
+
+<script>
+const rows=[
+["late_ens + EfficientNet ×5",0.066],["late_ens (AVES+Dasheng, 10 avg)",0.069],["fusion_ens",0.077],["dasheng06b_ens",0.084],
+["dasheng_ens",0.087],["late",0.088],["dasheng06b",0.114],["aves_ens",0.120],["Dasheng",0.129],["fusion",0.129],
+["m5 two-stream",0.149],["m4 detect + check",0.158],["Final model (AVES)",0.159,"ref"],["m7 pitch contour",0.161],
+["dasheng_ft_ens (LoRA)",0.223,"bad"],["dasheng_ft (LoRA)",0.356,"bad"]];
+const el=document.getElementById("bars"),max=0.36;
+for(const [n,v,k] of rows){
+  const a=document.createElement("span");a.textContent=n;
+  const w=document.createElement("div");
+  const b=document.createElement("div");b.className="bar"+(k?" "+k:(v>0.159?" bad":""));b.style.width=(v/max*100)+"%";
+  const i=document.createElement("i");i.textContent=v.toFixed(3);b.appendChild(i);w.appendChild(b);
+  el.append(a,w);
+}
+</script>

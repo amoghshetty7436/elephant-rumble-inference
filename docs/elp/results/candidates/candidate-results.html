@@ -1,0 +1,180 @@
+<title>Rumble Detector Candidates</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Public+Sans:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column; the answer first, then a chart per question, then one card per model. */
+:root{
+  --bg:#f6f7f3; --surface:#ffffff; --fg:#1f2620; --muted:#5d675f; --line:#d9ded6;
+  --accent:#2f6b4f; --better:#2f7d4f; --worse:#b2502f; --same:#7a7f78; --fail:#9a8f6a;
+  --display:"Fraunces",Georgia,serif; --body:"Public Sans",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141815; --surface:#1c211d; --fg:#e7ebe5; --muted:#a2aba3; --line:#323a34;
+  --accent:#7cc39c; --better:#6fcf95; --worse:#ef8a63; --same:#9aa09a; --fail:#c9bb87; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#141815; --surface:#1c211d; --fg:#e7ebe5; --muted:#a2aba3; --line:#323a34;
+  --accent:#7cc39c; --better:#6fcf95; --worse:#ef8a63; --same:#9aa09a; --fail:#c9bb87; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font:16px/1.6 var(--body)}
+.wrap{max-width:860px;margin:0 auto;padding-block:40px 64px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:44px}
+h1,h2{font-family:var(--display);font-weight:600;text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:2.1rem}
+h2{font-size:1.45rem}
+h3{font-size:1.05rem;margin:0}
+p{margin:0;max-width:66ch}
+section{display:grid;gap:14px}
+.eyebrow{font:500 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.lead{font-size:1.12rem}
+.verdict{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.vcard{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:6px;align-content:start}
+.vcard b{font-size:1.02rem}
+.pill{display:inline-block;font:600 .74rem var(--mono);letter-spacing:.04em;padding:2px 8px;border-radius:99px;border:1px solid currentColor;width:max-content}
+.p-better{color:var(--better)}.p-worse{color:var(--worse)}.p-same{color:var(--same)}.p-fail{color:var(--fail)}
+.note{background:var(--surface);border-left:3px solid var(--accent);padding:14px 16px;border-radius:0 8px 8px 0}
+.chart{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px}
+.chart svg{display:block;min-width:560px;width:100%;height:auto}
+.chart text{font-family:var(--body);fill:var(--fg)}
+.chart .tick{font-family:var(--mono);font-size:11px;fill:var(--muted)}
+.cap{font-size:.9rem;color:var(--muted)}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:560px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:.82rem;color:var(--muted);font-weight:600}
+td.n{font-family:var(--mono);font-size:.92rem}
+.good{color:var(--better);font-weight:600}.bad{color:var(--worse);font-weight:600}
+.models{display:grid;gap:12px}
+.m{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;display:grid;gap:8px}
+.mh{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:baseline;justify-content:space-between}
+.steps{margin:0;padding-left:1.2em;display:grid;gap:6px;max-width:66ch}
+dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0}
+dt{font-weight:600}dd{margin:0}
+@media (max-width:520px){dl{grid-template-columns:1fr}dt{margin-top:6px}}
+</style>
+
+<div class="wrap">
+
+<header style="display:grid;gap:12px">
+  <div class="eyebrow">Elephant rumble detector · six new designs tested · 3 Nov 2026</div>
+  <h1>Two new designs beat our current detector</h1>
+  <p class="lead">We tried six new ways of finding elephant rumbles in 24-hour forest recordings. Two of them are better than the detector we have now: <b>Dasheng</b> (a different "ear" listening to the sound) and <b>Detect, then double-check</b> (a second model that re-checks every alarm). Three were worse, and two didn't finish because of a bug that is now fixed.</p>
+</header>
+
+<section>
+  <div class="eyebrow">How we judge a detector</div>
+  <h2>Fewer false alarms, while still finding the rumbles</h2>
+  <p>A detector listens to a whole day and raises an alarm when it thinks an elephant rumbled. Two things can go wrong: it misses a real rumble, or it raises a <b>false alarm</b> on something else (rain, an engine, a monkey). Someone at ELP has to check every alarm by hand, so false alarms cost people time.</p>
+  <p>We fix how many rumbles a detector must find, then count its false alarms:</p>
+  <div class="note"><b>Score = false alarms per hour of recording, while still finding 8 to 8½ rumbles out of every 10.</b> Lower is better. Our current detector scores 0.159, which is about one false alarm every 6 hours.</div>
+  <p>Each design was trained 5 times from scratch, because results vary a little from run to run. We first compare them on <b>validation days</b>, recordings set aside for choosing. Then each design is tested once on recordings none of them ever saw (Sample A and Sample B from the Nouabalé-Ndoki forest, plus 3 days of vehicle noise).</p>
+</section>
+
+<section>
+  <div class="eyebrow">Result 1 · validation days</div>
+  <h2>False alarms per hour, on the days used for choosing</h2>
+  <div class="chart" id="valchart" role="img" aria-label="Validation score per model with the range over five runs"></div>
+  <p class="cap">The dot is the average of 5 training runs, and the line shows the best and worst run. The dashed line is our current detector. A design is clearly better only if its whole line sits to the left of the current detector's range. Dasheng nearly does; Detect-then-check ties here but wins on the tests below.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Result 2 · the tests, run once</div>
+  <h2>On new recordings, both winners cut false alarms by about a third</h2>
+  <p>Here every design is set to find about 8 in 10 rumbles on the validation days, then run on recordings it has never heard.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Design</th><th>Sample B: rumbles found</th><th>Sample B: alarms that were real</th><th>Sample A: rumbles found</th><th>Sample A: alarms that were real</th><th>Vehicle days: false alarms per hour</th></tr></thead>
+    <tbody>
+      <tr><td>Current detector</td><td class="n">91.0%</td><td class="n">81.9%</td><td class="n">76.3%</td><td class="n">87.4%</td><td class="n">0.25</td></tr>
+      <tr><td><b>Detect, then double-check</b></td><td class="n">91.1%</td><td class="n good">87.3%</td><td class="n good">80.4%</td><td class="n good">90.7%</td><td class="n good">0.16</td></tr>
+      <tr><td><b>Dasheng</b></td><td class="n">90.9%</td><td class="n good">87.7%</td><td class="n good">80.5%</td><td class="n good">91.1%</td><td class="n bad">0.57</td></tr>
+      <tr><td>Day-normalised</td><td class="n">91.4%</td><td class="n bad">76.9%</td><td class="n">76.8%</td><td class="n bad">85.0%</td><td class="n bad">0.30</td></tr>
+      <tr><td>BirdAVES</td><td class="n">89.9%</td><td class="n bad">79.1%</td><td class="n">77.3%</td><td class="n">86.7%</td><td class="n bad">0.47</td></tr>
+      <tr><td>Long memory</td><td class="n">90.3%</td><td class="n bad">74.2%</td><td class="n">77.1%</td><td class="n bad">82.9%</td><td class="n bad">0.41</td></tr>
+    </tbody>
+  </table></div>
+  <p class="cap">"Alarms that were real" is precision: of all alarms raised, the share that really were rumbles. Green is better than the current detector, red is worse. Means of 5 runs.</p>
+  <div class="note"><b>The catch with Dasheng:</b> on the vehicle days it raises more than twice as many false alarms as now (about one every 1¾ hours instead of one every 4). Detect-then-check is the only design that <i>lowers</i> vehicle false alarms. The vehicle set is only 3 days, but engines are exactly the noise ELP worries about.</div>
+</section>
+
+<section>
+  <div class="eyebrow">The six designs</div>
+  <h2>What each one does, and how it did</h2>
+  <p>All of them start the same way. The recording is sped up 32 times so that rumbles, which are too low for most sound models, land in a pitch range a pretrained model knows. That model, the "ear", turns each 0.64 seconds of sound into a list of numbers, a fingerprint. A small classifier then reads the fingerprints and says "rumble" or "not rumble". The designs change one piece of this.</p>
+  <div class="models">
+
+    <div class="m"><div class="mh"><h3>Dasheng: a different ear</h3><span class="pill p-better">Best on validation · 0.129</span></div>
+      <p>Swaps the ear. Our current ear (AVES) was trained on animal sounds. Dasheng was trained on 272,000 hours of all kinds of sound. Everything else stays the same.</p>
+      <p><b>Result:</b> the fewest false alarms in the forest, and it found the most rumbles in Sample A. But it is fooled more often by vehicles.</p></div>
+
+    <div class="m"><div class="mh"><h3>Detect, then double-check</h3><span class="pill p-better">Ties on validation · best on tests</span></div>
+      <p>Keeps the current detector, then hands each alarm to a second model. That model looks at a 32-second picture of the sound (a spectrogram) and gives its own opinion. It is a standard image network (ResNet-18), trained on the mistakes the first detector made.</p>
+      <p><b>Result:</b> on validation it matches the current detector (0.158). On the tests it beats it everywhere, including vehicles.</p></div>
+
+    <div class="m"><div class="mh"><h3>Day-normalised</h3><span class="pill p-worse">Worse · 0.196</span></div>
+      <p>Each recorder sounds a bit different. This design subtracts a recording's typical background from every fingerprint, so only what stands out is left.</p>
+      <p><b>Result:</b> worse. Removing the background seems to remove useful information too.</p></div>
+
+    <div class="m"><div class="mh"><h3>BirdAVES: a bird-trained ear</h3><span class="pill p-worse">Worse · 0.196</span></div>
+      <p>The same ear as now, but trained with many more bird recordings.</p>
+      <p><b>Result:</b> worse. More birds did not help with elephants.</p></div>
+
+    <div class="m"><div class="mh"><h3>Long memory</h3><span class="pill p-worse">Clearly worse · 0.286</span></div>
+      <p>Lets the classifier read 82 seconds at once instead of 11, using a recurrent network (a BiGRU), the trick that helped with whale calls.</p>
+      <p><b>Result:</b> clearly worse. Looking further around a sound doesn't help with rumbles.</p></div>
+
+    <div class="m"><div class="mh"><h3>Two-stream and Pitch contour</h3><span class="pill p-fail">Did not run · bug fixed</span></div>
+      <p><b>Two-stream</b> adds a small picture model looking at the low-pitch spectrogram alongside the ear. <b>Pitch contour</b> tracks the rumble's pitch, which bends up and down, unlike an engine's flat hum.</p>
+      <p>Both need features computed from the audio, and that step crashed on very short noise clips (rain drops under 2 seconds). This is fixed, and both can run next time the lab PC is free.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">What next</div>
+  <h2>Combine the two winners</h2>
+  <ol class="steps">
+    <li><b>Dasheng finds candidates, and the double-checker re-checks them.</b> That could keep Dasheng's fewer forest false alarms while the checker removes the vehicle alarms. It takes about 10 hours on the lab PC, because both parts are already computed.</li>
+    <li><b>Run Two-stream and Pitch contour</b>, now that the bug is fixed (about 6 hours).</li>
+    <li>Pick the final design on the validation days only, then test it once.</li>
+  </ol>
+</section>
+
+<section>
+  <div class="eyebrow">Words used on this page</div>
+  <dl>
+    <dt>Rumble</dt><dd>A very low call forest elephants make, mostly below 30 Hz, too low for people to hear well.</dd>
+    <dt>False alarm</dt><dd>The detector says "rumble" but there was none.</dd>
+    <dt>Validation days</dt><dd>Recordings kept aside to compare designs and choose settings. Never used for training.</dd>
+    <dt>Test sets</dt><dd>Sample A (43 days) and Sample B, hand-checked forest days, plus 3 days of vehicle noise. Used once, at the end.</dd>
+    <dt>Ear / encoder</dt><dd>A large model, trained beforehand on lots of sound, that turns audio into fingerprints. We don't retrain it.</dd>
+    <dt>Precision</dt><dd>Of all alarms, the share that were real rumbles.</dd>
+  </dl>
+</section>
+
+</div>
+
+<script>
+(function(){
+  const rows=[
+    {n:"Current detector",m:.159,lo:.134,hi:.191,k:"base"},
+    {n:"Dasheng",m:.129,lo:.100,hi:.142,k:"better"},
+    {n:"Detect, then double-check",m:.158,lo:.117,hi:.191,k:"same"},
+    {n:"Day-normalised",m:.196,lo:.143,hi:.215,k:"worse"},
+    {n:"BirdAVES",m:.196,lo:.167,hi:.219,k:"worse"},
+    {n:"Long memory",m:.286,lo:.262,hi:.307,k:"worse"},
+    {n:"Two-stream",m:null,k:"fail"},
+    {n:"Pitch contour",m:null,k:"fail"}];
+  const W=760,L=200,R=30,T=30,rowH=36,H=T+rows.length*rowH+30,max=.32;
+  const x=v=>L+(v/max)*(W-L-R);
+  const col={base:"var(--fg)",better:"var(--better)",same:"var(--same)",worse:"var(--worse)",fail:"var(--fail)"};
+  let s=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+  for(let t=0;t<=.3001;t+=.05){s+=`<line x1="${x(t)}" x2="${x(t)}" y1="${T-8}" y2="${H-26}" stroke="var(--line)" stroke-width="1"/><text class="tick" x="${x(t)}" y="${H-8}" text-anchor="middle">${t.toFixed(2)}</text>`}
+  s+=`<text class="tick" x="${x(0)}" y="14">fewer false alarms ←</text><text class="tick" x="${x(.3)}" y="14" text-anchor="end">→ more</text>`;
+  s+=`<rect x="${x(.134)}" y="${T-8}" width="${x(.191)-x(.134)}" height="${H-26-T+8}" fill="var(--accent)" opacity=".08"/>`;
+  s+=`<line x1="${x(.159)}" x2="${x(.159)}" y1="${T-8}" y2="${H-26}" stroke="var(--fg)" stroke-dasharray="4 4" stroke-width="1"/>`;
+  rows.forEach((r,i)=>{const y=T+i*rowH+rowH/2;
+    s+=`<text x="${L-12}" y="${y+4}" text-anchor="end" font-size="13" ${r.k==="base"?'font-weight="700"':''}>${r.n}</text>`;
+    if(r.m==null){s+=`<text x="${x(0)+6}" y="${y+4}" font-size="12" fill="${col.fail}" style="fill:${col.fail}">did not run (bug, now fixed)</text>`;return}
+    s+=`<line x1="${x(r.lo)}" x2="${x(r.hi)}" y1="${y}" y2="${y}" stroke="${col[r.k]}" stroke-width="2.5" stroke-linecap="round"/>`;
+    s+=`<circle cx="${x(r.m)}" cy="${y}" r="6" fill="${col[r.k]}" stroke="var(--surface)" stroke-width="2"/>`;
+    s+=`<text class="tick" x="${x(r.hi)+8}" y="${y+4}" style="fill:${col[r.k]}">${r.m.toFixed(3)}</text>`;});
+  s+=`</svg>`;
+  document.getElementById("valchart").innerHTML=s;
+})();
+</script>
