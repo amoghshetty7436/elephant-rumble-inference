@@ -30,7 +30,9 @@ import time
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# works from tools\ in the repository, or copied into the ElephantRumbleDetector folder
 sys.path.insert(0, os.path.join(HERE, "..", "ElephantRumbleDetector"))
+sys.path.insert(0, HERE)
 import rumble_detector as rd  # noqa: E402  the detector's own alarm rule and table format
 
 DEFAULT_CUTOFFS = [0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.97, 0.98, 0.99, 0.993, 0.995, 0.997, 0.999]
