@@ -87,6 +87,22 @@ def read_table(path):
                  - float(r["Begin Time (s)"]), float(r["Score"])) for r in csv.DictReader(f, delimiter="\t")]
 
 
+def from_events(path):
+    """All alarms detect_best.py saved, with their final (checked) scores."""
+    ev = np.load(path).astype(np.float64)
+    return [(a * rd.FRAME_SECONDS, b * rd.FRAME_SECONDS, float(s)) for a, b, _, s in ev]
+
+
+def detector_info(folder):
+    """detector.json of the run that made the results folder (it sits in --out, one level up)."""
+    for d in (folder, os.path.dirname(os.path.normpath(folder))):
+        p = os.path.join(d, "detector.json")
+        if os.path.exists(p):
+            with open(p) as f:
+                return rd.json.load(f)
+    return {}
+
+
 def from_probs(path, rule):
     """All detections the rule makes from the saved probabilities, at any score."""
     prob = np.load(path).astype(np.float32)
@@ -169,6 +185,10 @@ def main(argv=None):
     os.makedirs(a.out, exist_ok=True)
 
     settings = rd.json.load(open(os.path.join(rd.MODEL_DIR, "settings.json")))
+    run_info = detector_info(a.ours)
+    if run_info.get("kind") == "checked" or run_info.get("model_info"):  # detect_best.py's results
+        settings = {"name": run_info.get("experiment"), "rule": run_info["rule"], "cut_off": run_info["cut_off"]}
+        log(f"results of {run_info.get('experiment')}: rule and cut-off {settings['cut_off']:.4f} from its detector.json")
     rule, main_cut = settings["rule"], a.main_cutoff or settings["cut_off"]
     cutoffs = sorted(set([float(c) for c in a.cutoffs.split(",")] + [main_cut]))
 
@@ -190,8 +210,10 @@ def main(argv=None):
     for i, f in enumerate(common, 1):
         table = read_table(ours_idx[f])
         probs = ours_idx[f][: -len(rd.TABLE_SUFFIX)] + rd.PROBS_SUFFIX
-        if use_probs and os.path.exists(probs):
-            det = from_probs(probs, rule)
+        events = ours_idx[f][: -len(rd.TABLE_SUFFIX)] + ".events.npy"
+        if use_probs and (os.path.exists(events) or os.path.exists(probs)):
+            # detect_best.py's alarms carry the checker's scores, which the probabilities alone can't give
+            det = from_events(events) if os.path.exists(events) else from_probs(probs, rule)
             # self-check: the probabilities give back exactly the saved table at the cut-off it used
             # The probabilities are saved as float16 (about 0.0005 apart near 1), the tables were made
             # from float32: a detection scoring within that of the cut-off can fall either side.
