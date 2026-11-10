@@ -85,6 +85,19 @@ def test_known_answers(tmp_path):
     assert site[:6] == ["aa01a", "2", "5", "3", "1", "33.3%"]
 
 
+def test_float16_rounding_is_not_a_mismatch(tmp_path):
+    """0.99299 is under the cut-off in the table (float32) but rounds to 0.99316 in the saved float16."""
+    hh, ours = make(tmp_path)
+    t = next(ours.rglob("aa01a_20230702_000000" + rd.PROBS_SUFFIX))
+    p = np.load(t).astype(np.float32)
+    bump(p, 700, 710, 0.99299)
+    np.save(t, p.astype(np.float16))
+    out = tmp_path / "cmp"
+    ch.main(["--hh", str(hh), "--ours", str(ours), "--out", str(out)])
+    rep = (out / "report.md").read_text()
+    assert "give back exactly the saved table" in rep and "apart from +1 detections" in rep
+
+
 def test_tables_only(tmp_path):
     hh, ours = make(tmp_path, probs=False)
     out = tmp_path / "cmp"

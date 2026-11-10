@@ -183,7 +183,7 @@ def main(argv=None):
     missing = sorted(f for f in by_file if f not in ours_idx)
 
     # our detections per common file, at all scores if the probabilities are there
-    use_probs, check = not a.tables_only, {"files": 0, "same": 0, "differ": []}
+    use_probs, check = not a.tables_only, {"files": 0, "same": 0, "differ": [], "borderline": 0}
     ours, no_probs = {}, []
     for i, f in enumerate(common, 1):
         table = read_table(ours_idx[f])
@@ -191,10 +191,16 @@ def main(argv=None):
         if use_probs and os.path.exists(probs):
             det = from_probs(probs, rule)
             # self-check: the probabilities give back exactly the saved table at the cut-off it used
-            again = [(b, e, s) for b, e, s in det if s >= main_cut]
+            # The probabilities are saved as float16 (about 0.0005 apart near 1), the tables were made
+            # from float32: a detection scoring within that of the cut-off can fall either side.
+            def near(x):
+                return abs(x[2] - main_cut) < 0.001
+            again = [d for d in det if d[2] >= main_cut and not near(d)]
+            saved = [d for d in table if not near(d)]
+            check["borderline"] += sum(1 for d in det if d[2] >= main_cut and near(d)) - sum(map(near, table))
             check["files"] += 1
-            same = len(again) == len(table) and all(abs(x[0] - y[0]) < 0.01 and abs(x[1] - y[1]) < 0.01
-                                                     for x, y in zip(again, table))
+            same = len(again) == len(saved) and all(abs(x[0] - y[0]) < 0.01 and abs(x[1] - y[1]) < 0.01
+                                                     for x, y in zip(again, saved))
             if same:
                 check["same"] += 1
             else:
@@ -347,7 +353,10 @@ def main(argv=None):
            f"- On those {days:,} recordings Hori-Harm has **{n_true:,} confirmed rumble boxes** ({n_calls:,} calls; a box "
            f"can hold several) and **{n_fa:,} false alarms**.",
            ("- Self-check: on all " + f"{check['files']:,}" + " recordings, the saved probabilities give back exactly "
-            "the saved table at the main cut-off." if have_low and not check["differ"] else
+            "the saved table at the main cut-off" + (
+                f" (apart from {check['borderline']:+d} detections scoring within 0.001 of it: the probabilities "
+                "are stored rounded to float16, so a score that close can land on either side)."
+                if check["borderline"] else ".") if have_low and not check["differ"] else
             f"- Self-check: {len(check['differ'])} of {check['files']:,} recordings' probabilities do NOT give back their "
             f"table (first: {', '.join(check['differ'][:5])}). Look at these before trusting the other cut-offs."
             if check["differ"] else "- Only our tables were used (no probabilities): one cut-off only."),
