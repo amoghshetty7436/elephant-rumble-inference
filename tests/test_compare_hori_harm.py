@@ -98,6 +98,27 @@ def test_float16_rounding_is_not_a_mismatch(tmp_path):
     assert "give back exactly the saved table" in rep and "apart from +1 detections" in rep
 
 
+def test_detect_best_results_use_events_and_their_own_cut_off(tmp_path):
+    """detect_best.py writes <name>.events.npy (alarms with a final score) and detector.json."""
+    hh, ours = make(tmp_path, probs=False)
+    d = next(ours.rglob("aa01a_20230701_000000" + ch.rd.TABLE_SUFFIX)).parent
+    ev1 = np.array([[100 / F, 110 / F, 0.9, 0.80], [500 / F, 508 / F, 0.9, 0.55], [2000 / F, 2010 / F, 0.9, 0.7]])
+    for name, ev in (("aa01a_20230701_000000", ev1), ("aa01a_20230702_000000", np.zeros((0, 4)))):
+        np.save(d / (name + ".events.npy"), ev.astype(np.float32))
+        np.save(d / (name + rd.PROBS_SUFFIX), np.zeros(100, np.float16))
+        rows = [(a * F, b * F, "X:\\" + name + ".wav", a * F, sc) for a, b, _, sc in ev if sc >= 0.6]
+        rd.write_table(str(d / (name + rd.TABLE_SUFFIX)), rows)
+    (ours / "detector.json").write_text(rd.json.dumps({"experiment": "late_ens+checker", "cut_off": 0.6,
+                                                      "min_score_in_tables": 0.6, "rule": {}}))
+    out = tmp_path / "cmp"
+    assert ch.main(["--hh", str(hh), "--ours", str(ours), "--out", str(out)]) == 0
+    rep = (out / "report.md").read_text()
+    assert "late_ens+checker" in rep and "main cut-off 0.6" in rep
+    assert "give back exactly the saved table" in rep
+    cuts = {r[0]: r for r in read(out / "our_cutoffs.csv")[1:]}
+    assert cuts["0.6"][1] == "2" and cuts["0.6"][3] == "1" and cuts["0.5"][3] == "2"
+
+
 def test_tables_only(tmp_path):
     hh, ours = make(tmp_path, probs=False)
     out = tmp_path / "cmp"

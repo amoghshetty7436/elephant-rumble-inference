@@ -87,6 +87,24 @@ def read_table(path):
                  - float(r["Begin Time (s)"]), float(r["Score"])) for r in csv.DictReader(f, delimiter="\t")]
 
 
+EVENTS_SUFFIX = ".events.npy"  # written by tools/detect_best.py (round 2's checked detector)
+
+
+def from_events(path):
+    """All alarms detect_best.py kept, at any score: rows of [first frame, last frame, first-stage
+    score, final score]; the final score is the one its tables are cut on."""
+    ev = np.load(path).astype(np.float64)
+    return [(a * rd.FRAME_SECONDS, b * rd.FRAME_SECONDS, float(sc)) for a, b, _, sc in ev]
+
+
+def find_detector_json(folder):
+    for d in (folder, os.path.dirname(os.path.normpath(folder))):
+        p = os.path.join(d, "detector.json")
+        if os.path.exists(p):
+            return rd.json.load(open(p))
+    return None
+
+
 def from_probs(path, rule):
     """All detections the rule makes from the saved probabilities, at any score."""
     prob = np.load(path).astype(np.float32)
@@ -170,6 +188,11 @@ def main(argv=None):
 
     settings = rd.json.load(open(os.path.join(rd.MODEL_DIR, "settings.json")))
     rule, main_cut = settings["rule"], a.main_cutoff or settings["cut_off"]
+    run_info = find_detector_json(a.ours)  # the results folder's own record of its model, if any
+    if run_info and run_info.get("cut_off") is not None:
+        settings = dict(settings, name=run_info.get("experiment") or run_info.get("name") or settings["name"])
+        rule = run_info.get("rule", rule)
+        main_cut = a.main_cutoff or float(run_info.get("min_score_in_tables", run_info["cut_off"]))
     cutoffs = sorted(set([float(c) for c in a.cutoffs.split(",")] + [main_cut]))
 
     log("reading the Hori-Harm table...")
@@ -190,8 +213,9 @@ def main(argv=None):
     for i, f in enumerate(common, 1):
         table = read_table(ours_idx[f])
         probs = ours_idx[f][: -len(rd.TABLE_SUFFIX)] + rd.PROBS_SUFFIX
-        if use_probs and os.path.exists(probs):
-            det = from_probs(probs, rule)
+        events = ours_idx[f][: -len(rd.TABLE_SUFFIX)] + EVENTS_SUFFIX
+        if use_probs and (os.path.exists(events) or os.path.exists(probs)):
+            det = from_events(events) if os.path.exists(events) else from_probs(probs, rule)
             # self-check: the probabilities give back exactly the saved table at the cut-off it used
             # The probabilities are saved as float16 (about 0.0005 apart near 1), the tables were made
             # from float32: a detection scoring within that of the cut-off can fall either side.

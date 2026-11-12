@@ -4,8 +4,9 @@ This program listens to your recordings and finds **forest elephant rumbles**. F
 recording it makes a **Raven selection table** with one box for each rumble it finds, so you can
 check them in Raven Pro.
 
-It works on Windows computers with or without a graphics card. You don't need to know any
-programming: you double-click a file, pick your recordings in a window, and press **Start**.
+It works on **Windows, Mac and Linux** computers, with or without a graphics card. You don't need
+to know any programming: you double-click one file, pick your recordings in a window, and press
+**Start**.
 
 ---
 
@@ -13,45 +14,62 @@ programming: you double-click a file, pick your recordings in a window, and pres
 
 | File | What it is for |
 |---|---|
-| **1 - Install.bat** | Sets the detector up. Run it **once** on each computer. |
-| **2 - Find rumbles.bat** | Opens the detector's window. Use it every time you have recordings to check. |
+| **Start (Windows).bat** | Double-click this on a Windows computer. |
+| **Start (Mac).command** | Double-click this on a Mac. |
+| **Start (Linux).sh** | Run this on Linux. |
 | README.md | These instructions. |
-| rumble_detector.py, rumble_gui.py, model\\, requirements.txt | The detector itself. Don't move or change these. |
+| install.py, rumble_detector.py, rumble_gui.py, model, requirements.txt | The detector itself. Don't move or change these. |
+
+Each Start file does the same thing: **the first time**, it installs the detector on that
+computer (5 to 20 minutes, needs the internet); **every time after that**, it opens the
+detector's window straight away. Use the one for your computer and ignore the other two.
 
 **Keep the whole folder together.** Copy it to your own computer (for example to the Desktop)
 rather than running it from the network drive.
 
 ---
 
-## Step 1: Install (once per computer, 5 to 20 minutes)
+## Step 1: Install (the first time only, 5 to 20 minutes)
 
-1. **Unzip the folder first.** Right-click `ElephantRumbleDetector.zip`, choose **Extract All...**,
-   and pick a place on this computer (for example the Desktop). Double-clicking the files while
-   they are still inside the zip doesn't work.
+1. **Unzip the folder first.** Double-clicking the files while they are still inside the zip
+   doesn't work.
+   - Windows: right-click `ElephantRumbleDetector.zip`, choose **Extract All...**, and pick a place
+     on this computer (for example the Desktop).
+   - Mac: double-click the zip; it makes an `ElephantRumbleDetector` folder next to it. Move that
+     folder to, for example, your Desktop.
 2. Make sure the computer is connected to the internet.
-3. Double-click **`1 - Install.bat`**.
-   - If Windows shows a blue box saying "Windows protected your PC", click **More info**, then
-     **Run anyway**.
-4. Wait. A black window shows what is happening. It:
-   - installs Python 3.11 if the computer doesn't have it,
+3. Open the `ElephantRumbleDetector` folder and start the file for your computer:
+   - **Windows:** double-click **`Start (Windows).bat`**. If a blue box says "Windows protected
+     your PC", click **More info**, then **Run anyway**.
+   - **Mac:** the first time, **right-click** (or Ctrl-click) **`Start (Mac).command`** and choose
+     **Open**, then **Open** again in the box that asks. (A plain double-click is refused the first
+     time, because the file doesn't come from the App Store.) If the Mac has no suitable Python, a
+     web page opens: download the "macOS 64-bit universal2 installer", install it, and start
+     `Start (Mac).command` again.
+   - **Linux:** open a terminal in the folder and run `bash "Start (Linux).sh"`. If it asks for
+     Python, run `sudo apt install python3 python3-venv python3-tk` first.
+4. Wait. A window with text shows what is happening. It:
+   - installs Python 3.11 if a Windows computer doesn't have it,
    - checks whether the computer has an NVIDIA graphics card and installs the matching version
-     (about 2.5 GB with a graphics card, 200 MB without),
+     (about 2.5 GB with a graphics card, 200 MB to 1 GB without),
    - downloads the AVES sound model (378 MB),
    - runs a short test.
-5. When it says **INSTALLED**, press any key to close the window.
+5. When it says **INSTALLED**, the detector's window opens by itself.
 
-If it says **THE INSTALL DID NOT FINISH**, check the internet connection and double-click
-`1 - Install.bat` again, because it picks up where it stopped. If it fails a second time, take a screenshot of
+If it says **THE INSTALL DID NOT FINISH**, check the internet connection and start the same
+file again, because it picks up where it stopped. If it fails a second time, take a screenshot of
 the window and send it to Amogh.
 
-> If the installer had to install Python, it may ask you to close the window and run
-> `1 - Install.bat` once more. That's normal.
+> On Windows, if the installer had to install Python, it may ask you to close the window and
+> start `Start (Windows).bat` once more. That's normal.
 
 ---
 
 ## Step 2: Find rumbles
 
-1. Double-click **`2 - Find rumbles.bat`**. The "Find elephant rumbles" window opens.
+1. Start the file for your computer again (on a Mac a normal double-click works from now on).
+   The "Find elephant rumbles" window opens. On Mac and Linux a text window opens with it: leave
+   that open (you can minimise it), because closing it closes the detector.
 
 2. **Recordings:** click **Folder...** (or **One file...**) and pick what to analyse:
 
@@ -61,7 +79,8 @@ the window and send it to Amogh.
    | One site folder | `L:\ELP\Projects\Nouabale\nn_sounds\nn_202306_jun_dep17\nn03g_202306_jun` | every recording of that site |
    | One recording | `...\nn03g_202306_jun\nn03g_20230825_134525.wav` | just that recording |
 
-   You can also paste a path into the box, or drag a folder or file onto `2 - Find rumbles.bat`.
+   You can also paste a path into the box, or (on Windows) drag a folder or file onto
+   `Start (Windows).bat`.
 
 3. **Save results in:** it fills in `Desktop\Rumble Results\<name of what you chose>`. Keep it, or
    click **Folder...** to pick another place (it can be on the network drive, but not inside the
@@ -76,8 +95,8 @@ the window and send it to Amogh.
    - **This recording:** the recording being analysed right now.
 
    The box at the bottom lists each finished recording and how many rumbles it found.
-   **Keep the computer plugged in.** The detector stops Windows from going to sleep, but don't
-   shut the computer down or let Windows Update restart it.
+   **Keep the computer plugged in.** The detector stops the computer from going to sleep, but
+   don't shut it down or let an update restart it.
 
 6. When it's finished it asks whether to open the results folder (the **Open results folder**
    button does the same at any time).
@@ -206,11 +225,12 @@ From 0.5 to 0.95 the share of real detections rises a lot while few rumbles are 
 
 | What you see | What to do |
 |---|---|
-| "The detector is not installed on this computer yet" | Run `1 - Install.bat` first. |
-| A black window with questions opens instead of the detector's window | The computer's Python has no window toolkit (tkinter). It still works: answer the questions in the black window (paste paths with a right-click). |
+| The Mac says the file "cannot be opened because it is from an unidentified developer" | Right-click (or Ctrl-click) `Start (Mac).command`, choose **Open**, then **Open** again. Only needed the first time. |
+| The Mac opens `Start (Mac).command` in a text editor | It lost its "can run" setting (this happens if the zip was opened by some other program). Open Terminal, type `bash ` (with a space), drag the file into the Terminal window and press Enter. |
+| A text window with questions opens instead of the detector's window | The computer's Python has no window toolkit (tkinter). It still works: answer the questions in that window (on Windows paste paths with a right-click; on a Mac drag the folder into the window). On Linux, `sudo apt install python3-tk`, delete the `.venv` folder and start again for the window. |
 | "Can't find a folder or sound file at ..." | The path is wrong or the drive isn't connected. Check that you can open it in File Explorer, then paste it again. |
 | "No sound files found there" | The folder has no `.wav` / `.flac` / `.aif` files, even in its subfolders. |
-| It says it runs "on the processor" but the computer has a graphics card | Only NVIDIA cards are used. If it's NVIDIA, update its driver (nvidia.com/drivers), delete the `.venv` folder and run `1 - Install.bat` again. |
+| It says it runs "on the processor" but the computer has a graphics card | Only NVIDIA cards are used. If it's NVIDIA, update its driver (nvidia.com/drivers), delete the `.venv` folder and start the Start file again (it installs again). |
 | The computer becomes slow while it runs (no graphics card) | Press **Stop**, lower **Processor cores to use**, and press **Start** again. It carries on where it stopped. |
 | Anything else | Send `run_log.txt` from the results folder (or a screenshot) to Amogh. |
 
@@ -232,7 +252,14 @@ From 0.5 to 0.95 the share of real detections rises a lot while few rumbles are 
 - **The window** is `rumble_gui.py` (tkinter, part of Python). It runs `rumble_detector.py run`
   in the background, restarts it if it stalls, and shows its output. `rumble_detector.py` with
   no arguments asks the same questions in the console instead.
-- **Command line** (inside the folder, with `.venv\Scripts\python.exe`):
+- **Installer:** `install.py`, run by the Start files with any Python 3.9 to 3.12 the first
+  time (the Windows file finds or installs Python 3.11 with `py`/winget; the Mac/Linux file looks
+  for python3.11/3.12/3.10/python3 with tkinter). It makes `.venv`, installs PyTorch and the
+  other packages, downloads AVES, tests the detector and writes `.venv\installed.txt`, which
+  the Start files check. A folder installed with an older version of this package (no
+  `installed.txt`) is recognised and not installed again.
+- **Command line** (inside the folder, with `.venv\Scripts\python.exe` on Windows or
+  `.venv/bin/python` on Mac/Linux):
 
   ```
   python rumble_detector.py run "L:\path\deployment" "L:\path\other" --out "D:\results" --cores 8
@@ -246,7 +273,10 @@ From 0.5 to 0.95 the share of real detections rises a lot while few rumbles are 
   `--prefetch 2` (recordings read ahead while the GPU works). Exit code 4 means the recordings
   folder became unreachable.
 - **PyTorch builds the installer picks:** torch 2.4.1 + CUDA 12.1 for most NVIDIA cards,
-  torch 2.7.1 + CUDA 12.8 for RTX 50xx (Blackwell), torch 2.4.1 CPU otherwise. If the
+  torch 2.7.1 + CUDA 12.8 for RTX 50xx (Blackwell), torch 2.4.1 CPU otherwise (Windows and
+  Linux); torch 2.4.1 on Apple-processor Macs and 2.2.2 on Intel Macs (the last PyTorch for
+  them), both on the processor. If download.pytorch.org can't be reached, it falls back to the
+  normal package index. If the
   graphics card fails the install test, the installer writes `use_cpu.txt` and the detector
   uses the processor; delete that file to try the card again.
 - **No internet on the computer:** copy `aves-base-bio.torchaudio.pt` and

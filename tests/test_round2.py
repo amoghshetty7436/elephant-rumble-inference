@@ -1,5 +1,6 @@
 """Tests of tools/round2.py: the checkers' architectures, and the whole round end to end on
 the tiny fake Datasets tree (after short study.py and candidates.py runs)."""
+import csv
 import json
 import os
 import sys
@@ -32,7 +33,7 @@ def test_fit_pads_and_trims():
     assert r2.fit(torch.ones(2, 3), 4).shape == (4, 3)
 
 
-def test_round2_end_to_end(source, monkeypatch):  # noqa: F811
+def test_round2_end_to_end(source, monkeypatch, tmp_path_factory):  # noqa: F811
     monkeypatch.setattr(dc, "HELDOUT_FOREST_DAYS", 2)
     dc.main(["--source", str(source), "--minutes", "0.01", "--fake-embedder", "--configs", "A", "B", "C", "D"])
     dc.main(["--source", str(source), "--minutes", "0.01", "--fake-embedder", "--configs", "E", "--best", "A"])
@@ -80,6 +81,21 @@ def test_round2_end_to_end(source, monkeypatch):  # noqa: F811
     assert os.path.getmtime(root / "fusion" / "model_seed0.pth") == t
     assert os.path.getmtime(root / "checkers" / "resnet18_seed0.pth") == c
     assert a == json.load(open(root / "aves" / "results.json"))["summary"]["score"]
+    # every cut-off on the test days, and at the validated cut-off the same numbers as final.json
+    import pr_curves  # noqa: E402
+    pc = tmp_path_factory.mktemp("pr")
+    assert pr_curves.main(["--source", str(source), "--seeds", "2", "--fake-embedder", "--out", str(pc),
+                           "--names", "aves", "late_ens", checked[0][:-5], "nonsense"]) == 0
+    for name in ("aves", "late_ens", checked[0][:-5]):
+        cut = [float(r["cut_off_80"]) for r in csv.DictReader(open(pc / name / "cut_offs.csv")) if r["cut_off_80"]]
+        rows = list(csv.DictReader(open(pc / name / "sampleB_pr_curve.csv")))
+        assert len({r["run"] for r in rows}) == len(fin[name]["sets"]["sampleB"]["80"]["per_run"])
+        want = fin[name]["sets"]["sampleB"]["80"]["per_run"]
+        for run, (c, w) in enumerate(zip(cut, want)):
+            mine = [r for r in rows if r["run"] == str(run)]
+            got = min(mine, key=lambda r: abs(float(r["threshold"]) - c))
+            assert abs(float(got["recall"]) - w["recall"]) < 1e-6 and abs(float(got["fp_per_hour"]) - w["fp_per_hour"]) < 1e-5
+    assert not (pc / "nonsense").exists()
 
 
 def test_lora_starts_as_the_frozen_encoder_and_trains_only_adapters():
